@@ -120,7 +120,7 @@ if __name__ == "__main__":
         train_data = [data[i] for i in train_idx]
         test_data  = [data[i] for i in test_idx]
 
-        bovw = BOVW(detector_type="ORB", codebook_size=100)
+        bovw = BOVW(detector_type="DENSE_SIFT")
         bovw, classifier = train(dataset=train_data, bovw=bovw)
 
         acc = test(dataset=test_data, bovw=bovw, classifier=classifier)
