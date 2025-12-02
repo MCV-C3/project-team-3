@@ -1,0 +1,6 @@
+# Avoid uploading datasets
+places_reduced
+
+
+# Ignore cache files
+__pycache__
