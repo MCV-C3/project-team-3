@@ -21,11 +21,17 @@ class BOVW():
             self.detector = cv2.ORB_create(**detector_kwargs)
         elif detector_type == 'DENSE_SIFT':
             step_size = detector_kwargs.get('step_size', 8)
+            kp_size   = detector_kwargs.get('kp_size', step_size)  # nuevo
+
             detector_kwargs.pop('step_size', None)
+            detector_kwargs.pop('kp_size', None)
+
             self.detector = cv2.SIFT_create(**detector_kwargs)
-            #put keypoints every "step_size" pixels
-            self.kp = (lambda image: [cv2.KeyPoint(x, y, step_size) for y in range(0, image.shape[0], step_size) 
-                                for x in range(0, image.shape[1], step_size)])
+            self.kp = (lambda image: [
+                cv2.KeyPoint(x, y, kp_size)
+                for y in range(0, image.shape[0], step_size) 
+                for x in range(0, image.shape[1], step_size)
+            ])
         else:
             raise ValueError("Detector type must be 'SIFT', 'AKAZE', 'DENSE_SIFT', or 'ORB'")
         

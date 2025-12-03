@@ -113,6 +113,9 @@ if __name__ == "__main__":
 
     kfold = KFold(n_splits=3, shuffle=True, random_state=42)
 
+    step_size = [4, 8, 16, 32, 64]
+    scale_factors = [1/4, 1/2, 1, 2, 4] #1/2, 1, 2 time the step
+
     accuracies = []
 
     for fold, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
@@ -120,7 +123,11 @@ if __name__ == "__main__":
         train_data = [data[i] for i in train_idx]
         test_data  = [data[i] for i in test_idx]
 
-        bovw = BOVW(detector_type="DENSE_SIFT")
+        bovw = BOVW(
+            detector_type="DENSE_SIFT",
+            detector_kwargs={'step_size': ..., 'kp_size': ...} #kp_size == scale
+        )
+
         bovw, classifier = train(dataset=train_data, bovw=bovw)
 
         acc = test(dataset=test_data, bovw=bovw, classifier=classifier)
