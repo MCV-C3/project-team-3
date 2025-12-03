@@ -4,3 +4,4 @@ places_reduced
 
 # Ignore cache files
 __pycache__
+.conda/
