@@ -10,8 +10,7 @@ import os
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
-
-
+from sklearn.model_selection import KFold   
 
 
 def extract_bovw_histograms(bovw: Type[BOVW], descriptors: Literal["N", "T", "d"]):
@@ -40,7 +39,10 @@ def test(dataset: List[Tuple[Type[Image.Image], int]]
     print("predicting the values")
     y_pred = classifier.predict(bovw_histograms)
     
-    print("Accuracy on Phase[Test]:", accuracy_score(y_true=descriptors_labels, y_pred=y_pred))
+    acc = accuracy_score(y_true=descriptors_labels, y_pred=y_pred)
+    print("Accuracy on Phase[Test]:", acc)
+
+    return acc   
     
 
 def train(dataset: List[Tuple[Type[Image.Image], int]],
@@ -101,20 +103,36 @@ def Dataset(ImageFolder:str = "data/MIT_split/train") -> List[Tuple[Type[Image.I
 
             dataset.append((img_pil, map_classes[cls_folder]))
 
-
     return dataset
 
 
-    
-
-
 if __name__ == "__main__":
-     #/home/cboned/data/Master/MIT_split
-    data_train = Dataset(ImageFolder="/home/cboned/data/Master/MIT_split/train")
-    data_test = Dataset(ImageFolder="/home/cboned/data/Master/MIT_split/test") 
+    data_train = Dataset(ImageFolder="places_reduced/train")
+    data_val   = Dataset(ImageFolder="places_reduced/val")
+    data = data_train + data_val
 
-    bovw = BOVW()
-    
-    bovw, classifier = train(dataset=data_train, bovw=bovw)
-    
-    test(dataset=data_test, bovw=bovw, classifier=classifier)
+    kfold = KFold(n_splits=3, shuffle=True, random_state=42)
+
+    step_size = [4, 8, 16, 32, 64]
+    scale_factors = [1/4, 1/2, 1, 2, 4] #1/2, 1, 2 time the step
+
+    accuracies = []
+
+    for fold, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
+        print(f"\n========== Fold {fold} ==========")
+        train_data = [data[i] for i in train_idx]
+        test_data  = [data[i] for i in test_idx]
+
+        bovw = BOVW(
+            detector_type="DENSE_SIFT",
+            detector_kwargs={'step_size': ..., 'kp_size': ...} #kp_size == scale
+        )
+
+        bovw, classifier = train(dataset=train_data, bovw=bovw)
+
+        acc = test(dataset=test_data, bovw=bovw, classifier=classifier)
+        accuracies.append(acc)
+
+    print("\n========== 3-Fold Cross-Validation ==========")
+    print("Accuracies per fold:", accuracies)
+    print("Average accuracy:", np.mean(accuracies))
