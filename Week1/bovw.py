@@ -10,7 +10,7 @@ from typing import *
 
 class BOVW():
     
-    def __init__(self, detector_type="AKAZE", codebook_size:int=50, detector_kwargs:dict={}, codebook_kwargs:dict={}):
+    def __init__(self, detector_type="AKAZE", codebook_size:int=50, detector_kwargs:dict={}, codebook_kwargs:dict={}, other_kwargs:dict={}):
 
         self.kp = None
         if detector_type == 'SIFT':
@@ -21,7 +21,7 @@ class BOVW():
             self.detector = cv2.ORB_create(**detector_kwargs)
         elif detector_type == 'DENSE_SIFT':
             step_size = detector_kwargs.get('step_size', 8)
-            kp_size   = detector_kwargs.get('kp_size', step_size)  # nuevo
+            kp_size   = detector_kwargs.get('kp_size', step_size)
 
             detector_kwargs.pop('step_size', None)
             detector_kwargs.pop('kp_size', None)
@@ -34,20 +34,38 @@ class BOVW():
             ])
         else:
             raise ValueError("Detector type must be 'SIFT', 'AKAZE', 'DENSE_SIFT', or 'ORB'")
-        
+
         self.codebook_size = codebook_size
         self.codebook_algo = MiniBatchKMeans(n_clusters=self.codebook_size, **codebook_kwargs)
+        self.other_kwargs = other_kwargs
         
-               
+    def _window_image(self, image: Literal["H", "W", "C"], num_slices: int) -> np.ndarray:
+        H, W, C = image.shape
+        windowed_H = H // num_slices
+        windowed_W = W // num_slices
+        windowed_image = np.reshape(image, [num_slices, windowed_H, num_slices, windowed_W, C]).transpose([0, 2, 1, 3, 4]).reshape([-1, windowed_H, windowed_W, C])
+        return windowed_image
+                   
     ## Modify this function in order to be able to create a dense sift
     def _extract_features(self, image: Literal["H", "W", "C"]) -> Tuple:
-        # Dense SIFT
         if self.kp is not None:
-            return self.detector.compute(image, self.kp(image))
+            # Window image in pyramid
+            keypoints_list = []
+            descriptors_list = []
+
+            spatial_pyramid_config = self.other_kwargs.get('spatial_pyramid', 1)
+            # Spatial pyramid only for Dense Sift?
+            for lv in range(spatial_pyramid_config):
+                num_slices = 2 ** lv
+                windowed_image = self._window_image(image, num_slices)
+                for img in windowed_image:
+                    # Dense SIFT
+                    keypoints, descriptors = self.detector.compute(img, self.kp(img))
+                    keypoints_list.append(keypoints)
+                    descriptors_list.append(descriptors)
+            return np.concat(keypoints_list, axis=0), np.concat(descriptors_list, axis=0)
         
-        # SIFT
         return self.detector.detectAndCompute(image, None)
-    
     
     def _update_fit_codebook(self, descriptors: Literal["N", "T", "d"])-> Tuple[Type[MiniBatchKMeans],
                                                                                Literal["codebook_size", "d"]]:
@@ -72,10 +90,6 @@ class BOVW():
         codebook_descriptor = codebook_descriptor / np.linalg.norm(codebook_descriptor)
         
         return codebook_descriptor       
-    
-
-
-
 
 def visualize_bow_histogram(histogram, image_index, output_folder="./test_example.jpg"):
     """
