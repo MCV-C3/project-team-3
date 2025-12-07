@@ -9,12 +9,19 @@ import tqdm
 import os
 
 from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC, LinearSVC
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import KFold   
 
 
 def extract_bovw_histograms(bovw: Type[BOVW], descriptors: Literal["N", "T", "d"]):
     return np.array([bovw._compute_codebook_descriptor(descriptors=descriptor, kmeans=bovw.codebook_algo) for descriptor in descriptors])
+
+def histogram_intersection_kernel(X, Y):
+    """
+    K(x, y) = sum(min(x_i, y_i))
+    """
+    return np.sum(np.minimum(X[:, None, :], Y[None, :, :]), axis=2)
 
 
 def test(dataset: List[Tuple[Type[Image.Image], int]]
@@ -46,7 +53,8 @@ def test(dataset: List[Tuple[Type[Image.Image], int]]
     
 
 def train(dataset: List[Tuple[Type[Image.Image], int]],
-           bovw:Type[BOVW]):
+           bovw:Type[BOVW],
+           classifier_type: str = "logistic"):
     all_descriptors = []
     all_labels = []
     
@@ -66,7 +74,19 @@ def train(dataset: List[Tuple[Type[Image.Image], int]],
     bovw_histograms = extract_bovw_histograms(descriptors=all_descriptors, bovw=bovw) 
     
     print("Fitting the classifier")
-    classifier = LogisticRegression(class_weight="balanced").fit(bovw_histograms, all_labels)
+    if classifier_type == "logistic":
+        classifier = LogisticRegression(class_weight="balanced", max_iter=2000)
+    elif classifier_type == "linear_svc":
+        classifier = LinearSVC(class_weight="balanced")
+    elif classifier_type == "rbf_svc":
+        classifier = SVC(kernel="rbf", class_weight="balanced")
+    elif classifier_type == "histogram_svc":
+        classifier = SVC(kernel=histogram_intersection_kernel, class_weight="balanced")
+    else:
+        raise ValueError(f"Unknown classifier_type: {classifier_type}")
+
+
+    classifier = classifier.fit(bovw_histograms, all_labels)
 
     print("Accuracy on Phase[Train]:", accuracy_score(y_true=all_labels, y_pred=classifier.predict(bovw_histograms)))
     
