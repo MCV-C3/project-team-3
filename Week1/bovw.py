@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
 import os
 import glob
@@ -10,7 +11,7 @@ from typing import *
 
 class BOVW():
     
-    def __init__(self, detector_type="AKAZE", codebook_size:int=50, detector_kwargs:dict={}, codebook_kwargs:dict={}):
+    def __init__(self, detector_type="AKAZE", codebook_type="kmeans", codebook_size:int=50, detector_kwargs:dict={}, codebook_kwargs:dict={}):
 
         self.kp = None
         if detector_type == 'SIFT':
@@ -36,7 +37,15 @@ class BOVW():
             raise ValueError("Detector type must be 'SIFT', 'AKAZE', 'DENSE_SIFT', or 'ORB'")
         
         self.codebook_size = codebook_size
-        self.codebook_algo = MiniBatchKMeans(n_clusters=self.codebook_size, **codebook_kwargs)
+        self.codebook_type = codebook_type
+
+        if self.codebook_type == "kmeans":
+            self.codebook_algo = MiniBatchKMeans(n_clusters=self.codebook_size, **codebook_kwargs)
+        elif self.codebook_type == "gmm":
+            self.codebook_algo = GaussianMixture(n_components=self.codebook_size, **codebook_kwargs)
+        else:
+            raise ValueError("Codebook type must be 'kmeans' or 'gmm'")
+        
         
                
     ## Modify this function in order to be able to create a dense sift
@@ -54,24 +63,56 @@ class BOVW():
         
         all_descriptors = np.vstack(descriptors)
 
-        self.codebook_algo = self.codebook_algo.partial_fit(X=all_descriptors)
+        if self.codebook_type == "kmeans":
+            self.codebook_algo = self.codebook_algo.partial_fit(X=all_descriptors)
+            return self.codebook_algo, self.codebook_algo.cluster_centers_
 
-        return self.codebook_algo, self.codebook_algo.cluster_centers_
+        elif self.codebook_type == "gmm":
+            self.codebook_algo.fit(X=all_descriptors)
+            return self.codebook_algo, self.codebook_algo.means_
+        
     
-    def _compute_codebook_descriptor(self, descriptors: Literal["1 T d"], kmeans: Type[KMeans]) -> np.ndarray:
+    def _compute_codebook_descriptor(self, descriptors: Literal["1 T d"], model) -> np.ndarray:
 
+        if self.codebook_type == "kmeans":
+            return self._compute_kmeans_histogram(descriptors, model)
+
+        elif self.codebook_type == "gmm":
+            return self._compute_fisher_vector(descriptors, model)  
+
+
+    def _compute_kmeans_histogram(self, descriptors, kmeans):
         visual_words = kmeans.predict(descriptors)
-        
-        
+                
         # Create a histogram of visual words
-        codebook_descriptor = np.zeros(kmeans.n_clusters)
+        histogram = np.zeros(kmeans.n_clusters)
         for label in visual_words:
-            codebook_descriptor[label] += 1
+            histogram[label] += 1
         
         # Normalize the histogram (optional)
-        codebook_descriptor = codebook_descriptor / np.linalg.norm(codebook_descriptor)
+        histogram = histogram / np.linalg.norm(histogram)
         
-        return codebook_descriptor       
+        return histogram
+
+
+    def _compute_fisher_vector(self, descriptors, gmm):
+        # responsibilities NxK
+        Q = gmm.predict_proba(descriptors)
+
+        # mean, variance, weights
+        means = gmm.means_
+        covs  = gmm.covariances_
+
+        # FV components
+        G_mu = (Q[:,:,None] * (descriptors[:,None,:] - means[None,:,:]) / np.sqrt(covs[None,:,:])).sum(axis=0)
+        G_sigma = (Q[:,:,None] * ((descriptors[:,None,:] - means[None,:,:])**2 / covs[None,:,:] - 1)).sum(axis=0)
+
+        fv = np.hstack([G_mu.flatten(), G_sigma.flatten()])
+        
+        # normalize
+        fv = fv / np.linalg.norm(fv)
+
+        return fv   
     
 
 

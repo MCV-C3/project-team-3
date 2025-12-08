@@ -15,7 +15,7 @@ from sklearn.model_selection import KFold
 
 
 def extract_bovw_histograms(bovw: Type[BOVW], descriptors: Literal["N", "T", "d"]):
-    return np.array([bovw._compute_codebook_descriptor(descriptors=descriptor, kmeans=bovw.codebook_algo) for descriptor in descriptors])
+    return np.array([bovw._compute_codebook_descriptor(descriptors=descriptor, model=bovw.codebook_algo) for descriptor in descriptors])
 
 
 def histogram_intersection_kernel(X, Y):
