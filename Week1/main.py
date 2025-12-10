@@ -7,6 +7,7 @@ import numpy as np
 import glob
 import tqdm
 import os
+import random
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC, LinearSVC
@@ -127,6 +128,43 @@ def Dataset(ImageFolder:str = "data/MIT_split/train") -> List[Tuple[Type[Image.I
     return dataset
 
 
+
+
+def DatasetReduced(
+    ImageFolder: str = "data/MIT_split/train",
+    percentage: float = 1.0,
+    seed: int = 20
+) -> List[Tuple[Image.Image, int]]:
+
+    random.seed(seed)
+
+    # Get class folders
+    class_folders = [d for d in os.listdir(ImageFolder)
+                     if os.path.isdir(os.path.join(ImageFolder, d))]
+
+    # Assign integer labels
+    map_classes = {cls_name: idx for idx, cls_name in enumerate(class_folders)}
+
+    dataset: List[Tuple[Image.Image, int]] = []
+
+    for cls_name in class_folders:
+
+        cls_path = os.path.join(ImageFolder, cls_name)
+        images = glob.glob(cls_path + "/*.jpg")
+
+        # Select percentage of images for this class
+        n_total = len(images)
+        n_keep = max(1, int(n_total * percentage))   # keep at least 1
+        selected_images = random.sample(images, n_keep)
+
+        # Load selected images
+        for img_path in selected_images:
+            img_pil = Image.open(img_path).convert("RGB")
+            dataset.append((img_pil, map_classes[cls_name]))
+
+    return dataset
+
+
 if __name__ == "__main__":
     data_train = Dataset(ImageFolder="places_reduced/train")
     data_val   = Dataset(ImageFolder="places_reduced/val")
@@ -157,3 +195,5 @@ if __name__ == "__main__":
     print("\n========== 3-Fold Cross-Validation ==========")
     print("Accuracies per fold:", accuracies)
     print("Average accuracy:", np.mean(accuracies))
+
+

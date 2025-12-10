@@ -1,5 +1,6 @@
 # Avoid uploading datasets
 places_reduced
+places_reduced_reduced
 
 
 # Ignore cache files

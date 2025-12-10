@@ -42,7 +42,14 @@ class BOVW():
         if self.codebook_type == "kmeans":
             self.codebook_algo = MiniBatchKMeans(n_clusters=self.codebook_size, **codebook_kwargs)
         elif self.codebook_type == "gmm":
-            self.codebook_algo = GaussianMixture(n_components=self.codebook_size, **codebook_kwargs)
+            self.codebook_algo = GaussianMixture(
+                n_components=self.codebook_size,
+                covariance_type="diag",
+                reg_covar=1e-3,           # ⬅️ VERY IMPORTANT FIX
+                max_iter=200,
+                init_params="kmeans",     # More stable initialization
+                **codebook_kwargs
+            )
         else:
             raise ValueError("Codebook type must be 'kmeans' or 'gmm'")
         
@@ -58,17 +65,46 @@ class BOVW():
         return self.detector.detectAndCompute(image, None)
     
     
-    def _update_fit_codebook(self, descriptors: Literal["N", "T", "d"])-> Tuple[Type[MiniBatchKMeans],
+    def _update_fit_codebook(self, descriptors: Literal["N", "T", "d"], batch_size = 5000)-> Tuple[Type[MiniBatchKMeans],
                                                                                Literal["codebook_size", "d"]]:
         
-        all_descriptors = np.vstack(descriptors)
+        #all_descriptors = np.vstack(descriptors)
 
         if self.codebook_type == "kmeans":
-            self.codebook_algo = self.codebook_algo.partial_fit(X=all_descriptors)
+
+            # Stream descriptors in chunks
+            for desc in descriptors:
+                if desc is None or len(desc) == 0:
+                    continue
+                
+                # Split into mini-batches
+                for i in range(0, len(desc), batch_size):
+                    chunk = desc[i : i + batch_size]
+                    self.codebook_algo.partial_fit(chunk)
+
             return self.codebook_algo, self.codebook_algo.cluster_centers_
 
+            #self.codebook_algo = self.codebook_algo.partial_fit(X=all_descriptors)
+            #return self.codebook_algo, self.codebook_algo.cluster_centers_
+
         elif self.codebook_type == "gmm":
-            self.codebook_algo.fit(X=all_descriptors)
+            # GMM still needs full data… unless you use a subset
+            # So we sample randomly to stay memory-safe
+            sampled = []
+            for desc in descriptors:
+                if desc is None: 
+                    continue
+
+                # Take at most 500 descriptors per image
+                if len(desc) > 500:
+                    idx = np.random.choice(len(desc), 500, replace=False)
+                    sampled.append(desc[idx])
+                else:
+                    sampled.append(desc)
+
+            sampled = np.vstack(sampled)
+            sampled = np.vstack(sampled).astype(np.float64)
+            self.codebook_algo.fit(sampled)
             return self.codebook_algo, self.codebook_algo.means_
         
     
