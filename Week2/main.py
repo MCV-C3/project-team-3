@@ -121,6 +121,71 @@ def train_by_patches(model, dataloader, criterion, optimizer, device):
     return avg_loss, accuracy
 
 
+def train_patches(model, dataloader, criterion, optimizer, device,
+                     patch_size, agg_method):
+    model.train()
+    train_loss, correct, total = 0.0, 0, 0
+
+    for inputs, labels in dataloader:
+        inputs, labels = inputs.to(device), labels.to(device)
+
+        B, C, H, W = inputs.shape
+        patches = inputs.unfold(2, patch_size, patch_size)\
+                        .unfold(3, patch_size, patch_size)
+        patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
+        patches = patches.view(-1, C * patch_size * patch_size)
+
+        patch_outputs = model(patches)
+        num_patches = patch_outputs.shape[0] // B
+        patch_outputs = patch_outputs.view(B, num_patches, -1)
+
+        outputs = aggregate_patches(patch_outputs, agg_method)
+
+        loss = criterion(outputs, labels)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        train_loss += loss.item() * B
+        _, predicted = outputs.max(1)
+        correct += (predicted == labels).sum().item()
+        total += B
+
+    return train_loss / total, correct / total
+
+
+def test_patches(model, dataloader, criterion, device,
+                     patch_size, agg_method):
+    model.eval()
+    test_loss, correct, total = 0.0, 0, 0
+
+    for inputs, labels in dataloader:
+        inputs, labels = inputs.to(device), labels.to(device)
+
+        B, C, H, W = inputs.shape
+        patches = inputs.unfold(2, patch_size, patch_size)\
+                        .unfold(3, patch_size, patch_size)
+        patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
+        patches = patches.view(-1, C * patch_size * patch_size)
+
+        patch_outputs = model(patches)
+        num_patches = patch_outputs.shape[0] // B
+        patch_outputs = patch_outputs.view(B, num_patches, -1)
+
+        outputs = aggregate_patches(patch_outputs, agg_method)
+
+        # Compute loss on aggregated predictions
+        loss = criterion(outputs, labels)
+
+        # Track loss and accuracy
+        test_loss += loss.item() * inputs.size(0)
+        _, predicted = outputs.max(1)
+        correct += (predicted == labels).sum().item()
+        total += labels.size(0)
+
+    return test_loss / total, correct / total
+
+
 
 def test_by_patches(model, dataloader, criterion, device):
     model.eval()
@@ -198,6 +263,46 @@ def plot_metrics(train_metrics: Dict, test_metrics: Dict, metric_name: str):
 
     plt.close()  # Close the figure to free memory
 
+
+def extract_patches(inputs, patch_size):
+    batch_size, C, H, W = inputs.shape
+    num_patches_h = H // patch_size
+    num_patches_w = W // patch_size
+    num_patches = num_patches_h * num_patches_w
+
+    patches = inputs.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+    patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
+    patches = patches.view(batch_size * num_patches, C * patch_size * patch_size)
+
+    return patches, num_patches
+
+
+def agg_mean(patch_outputs):
+    return patch_outputs.mean(dim=1)
+
+def agg_max(patch_outputs):
+    return patch_outputs.max(dim=1).values
+
+def agg_mlp(patch_outputs, mlp):
+    # patch_outputs: [B, num_patches, num_classes]
+    B, P, C = patch_outputs.shape
+    combined = patch_outputs.view(B, P * C)
+    return mlp(combined)
+
+def build_aggregator_head(num_patches, num_classes):
+    return nn.Sequential(
+        nn.Linear(num_patches * num_classes, 256),
+        nn.ReLU(),
+        nn.Linear(256, num_classes)
+    )
+
+def aggregate_patches(patch_outputs, method="mean"):
+    if method == "mean":
+        return patch_outputs.mean(dim=1)
+    elif method == "max":
+        return patch_outputs.max(dim=1).values
+    else:
+        raise ValueError(f"Unknown aggregation method: {method}")
 
 
 def plot_computational_graph(model: torch.nn.Module, input_size: tuple, filename: str = "computational_graph"):
