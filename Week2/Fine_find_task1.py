@@ -1,38 +1,19 @@
 # Fine_find_task1.py
+import csv
+import json
+import os
 from typing import *
-from torch.utils.data import DataLoader, random_split
-from torchvision.datasets import ImageFolder
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
 import torchvision.transforms.v2 as F
 import tqdm
-import itertools
-import json
-import csv
-import os
 import wandb
-
-
-# -------------------------
-# Flexible MLP (para variar layers/neurons)
-# -------------------------
-class FlexibleMLP(nn.Module):
-    def __init__(self, input_d: int, hidden_dims: List[int], output_d: int):
-        super().__init__()
-        layers: List[nn.Module] = []
-        prev = input_d
-        for h in hidden_dims:
-            layers.append(nn.Linear(prev, h))
-            layers.append(nn.ReLU())
-            prev = h
-        layers.append(nn.Linear(prev, output_d))
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = x.view(x.shape[0], -1)
-        return self.net(x)
+from dataset import C3Dataset
+from models import FlexibleMlp
+from torch.utils.data import DataLoader
 
 
 # -------------------------
@@ -58,7 +39,15 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         correct += (predicted == labels).sum().item()
         total += labels.size(0)
 
-    return train_loss / total, correct / total
+    # Image log
+    img_list = []
+    for img, output, label in zip(inputs[-2:], predicted[-2:], labels[-2:]):
+        img = img.cpu().detach()
+        img = img.permute(1, 2, 0).numpy()
+        caption = f"Output: {dataloader.dataset.classes[output.item()]}\nLabel: {dataloader.dataset.classes[label.item()]}"
+        img_list.append(wandb.Image(img, caption=caption))
+
+    return train_loss / total, correct / total, img_list
 
 
 @torch.no_grad()
@@ -78,7 +67,15 @@ def eval_model(model, dataloader, criterion, device):
         correct += (predicted == labels).sum().item()
         total += labels.size(0)
 
-    return total_loss / total, correct / total
+    # Image log
+    img_list = []
+    for img, output, label in zip(inputs[-2:], predicted[-2:], labels[-2:]):
+        img = img.cpu().detach()
+        img = img.permute(1, 2, 0).numpy()
+        caption = f"Output: {dataloader.dataset.classes[output.item()]}\nLabel: {dataloader.dataset.classes[label.item()]}"
+        img_list.append(wandb.Image(img, caption=caption))
+
+    return total_loss / total, correct / total, img_list
 
 
 def set_seed(seed: int = 42):
@@ -89,42 +86,41 @@ def set_seed(seed: int = 42):
 
 
 def make_transforms(resize: int):
-    return F.Compose([
+    train_transforms = F.Compose([
         F.ToImage(),
         F.ToDtype(torch.float32, scale=True),
         F.Resize(size=(resize, resize)),
+        F.RandomHorizontalFlip(),
+        F.RandomVerticalFlip(),
+        F.RandomRotation(90)
     ])
+    val_transforms = F.Compose([
+        F.ToImage(),
+        F.ToDtype(torch.float32, scale=True),
+        F.Resize(size=(resize, resize))
+    ])
+    return train_transforms, val_transforms
 
 
 def make_loaders(train_dir: str, test_dir: str, resize: int, batch_size: int,
-                 val_ratio: float = 0.2, num_workers: int = 8):
-    transform = make_transforms(resize)
+                 val_ratio: float = 0.2, num_workers: int = 8, device=None):
+    train_transforms, val_transforms = make_transforms(resize)
 
-    dataset_full = ImageFolder(train_dir, transform=transform)
-    num_classes = len(dataset_full.classes)
-
-    n_total = len(dataset_full)
-    n_val = int(val_ratio * n_total)
-    n_train = n_total - n_val
-
-    generator = torch.Generator().manual_seed(42)
-    train_ds, val_ds = random_split(dataset_full, [n_train, n_val], generator=generator)
-
-    test_ds = ImageFolder(test_dir, transform=transform)
+    train_ds = C3Dataset(train_dir, transform=train_transforms, device=device)
+    val_ds = C3Dataset(test_dir, transform=val_transforms, device=device)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
+                              num_workers=num_workers, pin_memory=False)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers, pin_memory=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                             num_workers=num_workers, pin_memory=True)
+                            num_workers=num_workers, pin_memory=False)
 
-    sample_img, _ = dataset_full[0]
-    C, H, W = np.array(sample_img).shape
+    sample_img, _ = train_ds[0]
+    C, H, W = sample_img.shape
     input_d = C * H * W
 
-    return train_loader, val_loader, test_loader, input_d, num_classes
+    num_classes = len(train_ds.classes)
 
+    return train_loader, val_loader, input_d, num_classes
 
 def save_csv(path: str, rows: List[Dict]):
     if not rows:
@@ -138,14 +134,16 @@ def save_csv(path: str, rows: List[Dict]):
 
 
 if __name__ == "__main__":
+    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     set_seed(42)
 
     # ---- EDITA ESTO ----
-    TRAIN_DIR = "/ghome/group03/mcv/datasets/C3/2526/places_reduced/train"
-    TEST_DIR  = "/ghome/group03/mcv/datasets/C3/2526/places_reduced/val"
+    TRAIN_DIR = "/home/msiau/data/tmp/agarciat/MCVC/C3/places_reduced/train"
+    TEST_DIR  = "/home/msiau/data/tmp/agarciat/MCVC/C3/places_reduced/val"
     # --------------------
 
-    WANDB_PROJECT = "C3_DL_fine"
+    WANDB_PROJECT = "MCVCC3-Team3-2526"
     WANDB_ENTITY = None
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -156,13 +154,12 @@ if __name__ == "__main__":
 
     resize = int(best_coarse["resize"])
     batch_size = int(best_coarse["batch_size"])
-    epochs = int(best_coarse["epochs"])   # epochs fijo (entra sí o sí)
 
     print("Using best coarse:", best_coarse)
 
     # Loaders fijos
-    train_loader, val_loader, test_loader, input_d, num_classes = make_loaders(
-        TRAIN_DIR, TEST_DIR, resize=resize, batch_size=batch_size, val_ratio=0.2
+    train_loader, val_loader, input_d, num_classes = make_loaders(
+        TRAIN_DIR, TEST_DIR, resize=resize, batch_size=batch_size, val_ratio=0.2, num_workers=0, device=device
     )
 
     # Grid arquitectura
@@ -182,17 +179,18 @@ if __name__ == "__main__":
     ]
 
     results = []
-    group_name = f"fine_arch_r{resize}_b{batch_size}_e{epochs}"
+    group_name = f"fine_arch_r{resize}_b{batch_size}"
+    os.makedirs("results", exist_ok=True)
+    os.makedirs("results/checkpoints", exist_ok=True)
 
     for hidden_dims in hidden_dim_candidates:
         cfg = {
             "resize": resize,
             "batch_size": batch_size,
-            "epochs": epochs,
             "hidden_dims": hidden_dims,
         }
 
-        model = FlexibleMLP(input_d=input_d, hidden_dims=hidden_dims, output_d=num_classes).to(device)
+        model = FlexibleMlp(input_d=input_d, hidden_dims=hidden_dims, output_d=num_classes).to(device=device)
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
@@ -209,31 +207,40 @@ if __name__ == "__main__":
         best_val_loss = 1e9
         best_epoch = -1
 
-        for epoch in tqdm.tqdm(range(epochs), desc=f"FINE hidden={hidden_dims}"):
-            tr_loss, tr_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-            va_loss, va_acc = eval_model(model, val_loader, criterion, device)
-            te_loss, te_acc = eval_model(model, test_loader, criterion, device)
+        for epoch in tqdm.tqdm(range(100), desc=f"FINE hidden={hidden_dims}"):
+            tr_loss, tr_acc, tr_sample = train_one_epoch(model, train_loader, criterion, optimizer, device)
+            va_loss, va_acc, va_sample = eval_model(model, val_loader, criterion, device)
 
             if va_acc > best_val_acc:
                 best_val_acc = va_acc
-                best_val_loss = va_loss
                 best_epoch = epoch + 1
 
             wandb.log({
-                "epoch": epoch + 1,
                 "train/loss": tr_loss,
                 "train/acc": tr_acc,
                 "val/loss": va_loss,
                 "val/acc": va_acc,
-                "test/loss": te_loss,
-                "test/acc": te_acc,
-                "best/val_acc_so_far": best_val_acc,
-            })
+                "best/val_acc": best_val_acc,
+            }, step=epoch+1)
+
+            if epoch % 5 == 0:
+                wandb.log({
+                    "train/sample": tr_sample,
+                    "val/sample": va_sample
+                }, step=epoch+1)
+
+            if va_loss < best_val_loss:
+                best_val_loss = va_loss
+                patience = 0
+            else:
+                patience += 1
+            
+            if patience >= 15:
+                break
 
         result = {
             "resize": resize,
             "batch_size": batch_size,
-            "epochs": epochs,
             "hidden_dims": str(hidden_dims),
             "best_val_acc": float(best_val_acc),
             "best_val_loss": float(best_val_loss),
@@ -244,14 +251,22 @@ if __name__ == "__main__":
         run.summary["best_val_acc"] = best_val_acc
         run.summary["best_epoch"] = best_epoch
         wandb.finish()
+        
+        model: nn.Module = model.to(device='cpu')
+        torch.save({
+            'epoch': best_epoch,
+            'hidden_dims': cfg['hidden_dims'],
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'accuracy': best_val_acc
+        }, f"results/checkpoints/fine_r{cfg['resize']}_b{cfg['batch_size']}_h{cfg['hidden_dims']}.pt")
 
         del model
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    best = sorted(results, key=lambda x: (-x["best_val_acc"], x["best_val_loss"]))[0]
+    best = sorted(results, key=lambda x: (-x["best_val_acc"]))[0]
 
-    os.makedirs("results", exist_ok=True)
     save_csv("results/fine_results.csv", results)
 
     with open("results/best_fine_config.json", "w") as f:
@@ -262,3 +277,4 @@ if __name__ == "__main__":
     print("\nSaved:")
     print(" - results/fine_results.csv")
     print(" - results/best_fine_config.json")
+    print(" - results/checkpoints/(...).pt")

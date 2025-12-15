@@ -1,33 +1,28 @@
 # Coarse_find_task1.py
+import csv
+import itertools
+import json
+import os
 from typing import *
-from torch.utils.data import DataLoader, random_split
-from torchvision.datasets import ImageFolder
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
 import torchvision.transforms.v2 as F
 import tqdm
-import itertools
-import json
-import csv
-import os
 import wandb
-
+from dataset import C3Dataset
 from models import SimpleModel
+from torch.utils.data import DataLoader
 
 
-# -------------------------
-# Train / Eval (igual estilo main)
-# -------------------------
-def train_one_epoch(model, dataloader, criterion, optimizer, device):
+def train_one_epoch(model, dataloader: DataLoader, criterion, optimizer, device):
     model.train()
     train_loss = 0.0
     correct, total = 0, 0
 
     for inputs, labels in dataloader:
-        inputs, labels = inputs.to(device), labels.to(device)
-
         outputs = model(inputs)
         loss = criterion(outputs, labels)
 
@@ -40,7 +35,15 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
         correct += (predicted == labels).sum().item()
         total += labels.size(0)
 
-    return train_loss / total, correct / total
+    # Image log
+    img_list = []
+    for img, output, label in zip(inputs[-2:], predicted[-2:], labels[-2:]):
+        img = img.cpu().detach()
+        img = img.permute(1, 2, 0).numpy()
+        caption = f"Output: {dataloader.dataset.classes[output.item()]}\nLabel: {dataloader.dataset.classes[label.item()]}"
+        img_list.append(wandb.Image(img, caption=caption))
+
+    return train_loss / total, correct / total, img_list
 
 
 @torch.no_grad()
@@ -50,8 +53,6 @@ def eval_model(model, dataloader, criterion, device):
     correct, total = 0, 0
 
     for inputs, labels in dataloader:
-        inputs, labels = inputs.to(device), labels.to(device)
-
         outputs = model(inputs)
         loss = criterion(outputs, labels)
 
@@ -59,8 +60,16 @@ def eval_model(model, dataloader, criterion, device):
         _, predicted = outputs.max(1)
         correct += (predicted == labels).sum().item()
         total += labels.size(0)
+    
+    # Image log
+    img_list = []
+    for img, output, label in zip(inputs[-2:], predicted[-2:], labels[-2:]):
+        img = img.cpu().detach()
+        img = img.permute(1, 2, 0).numpy()
+        caption = f"Output: {dataloader.dataset.classes[output.item()]}\nLabel: {dataloader.dataset.classes[label.item()]}"
+        img_list.append(wandb.Image(img, caption=caption))
 
-    return total_loss / total, correct / total
+    return total_loss / total, correct / total, img_list
 
 
 def set_seed(seed: int = 42):
@@ -71,54 +80,54 @@ def set_seed(seed: int = 42):
 
 
 def make_transforms(resize: int):
-    return F.Compose([
+    train_transforms = F.Compose([
         F.ToImage(),
         F.ToDtype(torch.float32, scale=True),
         F.Resize(size=(resize, resize)),
+        F.RandomHorizontalFlip(),
+        F.RandomVerticalFlip(),
+        F.RandomRotation(90)
     ])
+    val_transforms = F.Compose([
+        F.ToImage(),
+        F.ToDtype(torch.float32, scale=True),
+        F.Resize(size=(resize, resize))
+    ])
+    return train_transforms, val_transforms
 
 
 def make_loaders(train_dir: str, test_dir: str, resize: int, batch_size: int,
-                 val_ratio: float = 0.2, num_workers: int = 8):
-    transform = make_transforms(resize)
+                 val_ratio: float = 0.2, num_workers: int = 8, device=None):
+    train_transforms, val_transforms = make_transforms(resize)
 
-    dataset_full = ImageFolder(train_dir, transform=transform)
-    num_classes = len(dataset_full.classes)
-
-    # Split train into train/val
-    n_total = len(dataset_full)
-    n_val = int(val_ratio * n_total)
-    n_train = n_total - n_val
-
-    generator = torch.Generator().manual_seed(42)
-    train_ds, val_ds = random_split(dataset_full, [n_train, n_val], generator=generator)
-
-    test_ds = ImageFolder(test_dir, transform=transform)
+    train_ds = C3Dataset(train_dir, transform=train_transforms, device=device)
+    val_ds = C3Dataset(test_dir, transform=val_transforms, device=device)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
+                              num_workers=num_workers, pin_memory=False)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
-                            num_workers=num_workers, pin_memory=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
-                             num_workers=num_workers, pin_memory=True)
+                            num_workers=num_workers, pin_memory=False)
 
-    # Input dim (C*H*W) según resize real
-    sample_img, _ = dataset_full[0]
-    C, H, W = np.array(sample_img).shape
+    sample_img, _ = train_ds[0]
+    C, H, W = sample_img.shape
     input_d = C * H * W
 
-    return train_loader, val_loader, test_loader, input_d, num_classes
+    num_classes = len(train_ds.classes)
+
+    return train_loader, val_loader, input_d, num_classes
 
 
 def run_one_config(cfg: Dict, train_dir: str, test_dir: str, device: torch.device,
                    project: str, entity: Optional[str], group: str):
     # loaders
-    train_loader, val_loader, test_loader, input_d, num_classes = make_loaders(
+    train_loader, val_loader, input_d, num_classes = make_loaders(
         train_dir=train_dir,
         test_dir=test_dir,
         resize=cfg["resize"],
         batch_size=cfg["batch_size"],
-        val_ratio=0.2
+        val_ratio=0.2,
+        num_workers=0,
+        device=device
     )
 
     # model baseline FIXED (hidden_d=300, 2 hidden layers)
@@ -133,39 +142,49 @@ def run_one_config(cfg: Dict, train_dir: str, test_dir: str, device: torch.devic
         entity=entity,
         group=group,
         config=cfg,
-        name=f"coarse_r{cfg['resize']}_b{cfg['batch_size']}_e{cfg['epochs']}",
+        name=f"coarse_r{cfg['resize']}_b{cfg['batch_size']}",
         reinit=True
     )
 
     best_val_acc = -1.0
     best_val_loss = 1e9
     best_epoch = -1
+    patience = 0
 
-    for epoch in tqdm.tqdm(range(cfg["epochs"]), desc=f"COARSE r={cfg['resize']} b={cfg['batch_size']} e={cfg['epochs']}"):
-        tr_loss, tr_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        va_loss, va_acc = eval_model(model, val_loader, criterion, device)
-        te_loss, te_acc = eval_model(model, test_loader, criterion, device)
+    for epoch in tqdm.tqdm(range(100), desc=f"COARSE r={cfg['resize']} b={cfg['batch_size']}"):
+        tr_loss, tr_acc, tr_sample = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        va_loss, va_acc, va_sample = eval_model(model, val_loader, criterion, device)
 
         if va_acc > best_val_acc:
             best_val_acc = va_acc
-            best_val_loss = va_loss
             best_epoch = epoch + 1
 
         wandb.log({
-            "epoch": epoch + 1,
             "train/loss": tr_loss,
             "train/acc": tr_acc,
             "val/loss": va_loss,
             "val/acc": va_acc,
-            "test/loss": te_loss,
-            "test/acc": te_acc,
-            "best/val_acc_so_far": best_val_acc,
-        })
+            "best/val_acc": best_val_acc,
+        }, step=epoch+1)
+
+        if epoch % 5 == 0:
+            wandb.log({
+                "train/sample": tr_sample,
+                "val/sample": va_sample
+            }, step=epoch+1)
+
+        if va_loss < best_val_loss:
+            best_val_loss = va_loss
+            patience = 0
+        else:
+            patience += 1
+        
+        if patience >= 15:
+            break
 
     result = {
         **cfg,
         "best_val_acc": float(best_val_acc),
-        "best_val_loss": float(best_val_loss),
         "best_epoch": int(best_epoch),
     }
 
@@ -174,7 +193,7 @@ def run_one_config(cfg: Dict, train_dir: str, test_dir: str, device: torch.devic
     wandb.finish()
 
     # cleanup
-    del model, train_loader, val_loader, test_loader
+    del model, train_loader, val_loader
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -193,38 +212,39 @@ def save_csv(path: str, rows: List[Dict]):
 
 
 if __name__ == "__main__":
+    os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     set_seed(42)
 
     # ---- EDITA ESTO ----
-    TRAIN_DIR = "/ghome/group03/mcv/datasets/C3/2526/places_reduced/train"
-    TEST_DIR  = "/ghome/group03/mcv/datasets/C3/2526/places_reduced/val"
+    TRAIN_DIR = "/home/msiau/data/tmp/agarciat/MCVC/C3/places_reduced/train"
+    TEST_DIR  = "/home/msiau/data/tmp/agarciat/MCVC/C3/places_reduced/val"
     # --------------------
 
-    WANDB_PROJECT = "C3_DL_coarse"
-    WANDB_ENTITY = None  # pon tu entity si la usas, si no, déjalo None
+    WANDB_PROJECT = "MCVCC3-Team3-2526"
+    WANDB_ENTITY = None
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Grid (epochs entra sí o sí)
     search_space = {
         "resize": [64, 96, 128],
-        "epochs": [10, 30, 50],
         "batch_size": [64, 128, 256],
     }
 
     configs = []
-    for r, e, b in itertools.product(search_space["resize"], search_space["epochs"], search_space["batch_size"]):
-        configs.append({"resize": r, "epochs": e, "batch_size": b})
+    for r, b in itertools.product(search_space["resize"], search_space["batch_size"]):
+        configs.append({"resize": r, "batch_size": b})
 
     results = []
     group_name = "coarse_grid"
-
+    
     for cfg in configs:
         res = run_one_config(cfg, TRAIN_DIR, TEST_DIR, device, WANDB_PROJECT, WANDB_ENTITY, group_name)
         results.append(res)
 
     # Elige best por best_val_acc (tie-break: menor val_loss)
-    best = sorted(results, key=lambda x: (-x["best_val_acc"], x["best_val_loss"]))[0]
+    best = sorted(results, key=lambda x: (-x["best_val_acc"]))[0]
 
     os.makedirs("results", exist_ok=True)
     save_csv("results/coarse_results.csv", results)
