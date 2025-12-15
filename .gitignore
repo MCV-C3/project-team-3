@@ -1,7 +1,7 @@
 # Avoid uploading datasets
 places_reduced
 places_reduced_reduced
-
+wandb
 
 # Ignore cache files
 __pycache__
