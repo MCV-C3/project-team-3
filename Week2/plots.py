@@ -49,7 +49,7 @@ def plot3():
     
     fig = plt.figure(figsize=(9, 6))
     
-    ax = sns.barplot(df, x='kernel', y='val_acc', palette='Set1')
+    ax = sns.barplot(df, x='kernel', y='val_acc', palette='Set1', order=df.sort_values('val_acc', ascending=False).kernel)
     ax.set_title("Best Val Accuracy vs Kernel Type")
     ax.set_xlabel("Kernel Type")
     ax.set_ylabel("Val Accuracy")
