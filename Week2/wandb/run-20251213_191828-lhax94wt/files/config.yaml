@@ -1,0 +1,108 @@
+_wandb:
+    value:
+        cli_version: 0.23.1
+        e:
+            qek99l60y1df5f59uws9r16eh90r83pk:
+                codePath: Week2/gridsearch.py
+                codePathLocal: gridsearch.py
+                cpu_count: 48
+                cpu_count_logical: 96
+                cudaVersion: "12.9"
+                disk:
+                    /:
+                        total: "105089261568"
+                        used: "40872935424"
+                email: gerardasbert@gmail.com
+                executable: /home/gasbert/miniconda3/envs/master_C3/bin/python
+                git:
+                    commit: eba5bb0cc1c99821972855ff072e204f4535efdb
+                    remote: https://github.com/MCV-C3/project-team-3.git
+                gpu: NVIDIA GeForce RTX 3090
+                gpu_count: 8
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-a27ffac3-dea8-0317-9523-c6d89604ea9e
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-3ba29804-a7ae-6ad0-61b0-2839a7a2599f
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-f941d807-04c6-b9ed-bd89-6be447069dcd
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-51014fbe-3a64-7d73-ada9-25690fef11d6
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-90df3315-934d-4413-635a-328a53f044f9
+                    - architecture: Ampere
+                      cudaCores: 10496
+                      memoryTotal: "25769803776"
+                      name: NVIDIA GeForce RTX 3090
+                      uuid: GPU-b4fc779f-6dc9-fd36-e623-45fd9c36dc02
+                    - architecture: Turing
+                      cudaCores: 4608
+                      memoryTotal: "25769803776"
+                      name: Quadro RTX 6000
+                      uuid: GPU-154609c0-698d-7918-ae10-f62c91a4556b
+                    - architecture: Turing
+                      cudaCores: 4608
+                      memoryTotal: "25769803776"
+                      name: Quadro RTX 6000
+                      uuid: GPU-4cd7fd32-333c-53dc-138e-cb4e67ba6e73
+                host: cudahpc13
+                memory:
+                    total: "201364951040"
+                os: Linux-6.8.0-88-generic-x86_64-with-glibc2.39
+                program: /home/gasbert/master/C3/project-team-3/Week2/gridsearch.py
+                python: CPython 3.9.25
+                root: /home/gasbert/master/C3/project-team-3/Week2
+                startedAt: "2025-12-13T18:18:28.994126Z"
+                writerId: qek99l60y1df5f59uws9r16eh90r83pk
+        m: []
+        python_version: 3.9.25
+        t:
+            "1":
+                - 1
+                - 41
+            "2":
+                - 1
+                - 41
+            "3":
+                - 1
+                - 2
+                - 13
+                - 16
+                - 62
+            "4": 3.9.25
+            "5": 0.23.1
+            "10":
+                - 20
+            "12": 0.23.1
+            "13": linux-x86_64
+aggregation:
+    value: mean
+batch_size_test:
+    value: 128
+batch_size_train:
+    value: 256
+epochs:
+    value: 50
+hidden_dim:
+    value: 300
+learning_rate:
+    value: 0.001
+model:
+    value: SimpleModel
+patch_size:
+    value: 16

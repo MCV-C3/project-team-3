@@ -1,0 +1,12 @@
+{"time":"2025-12-13T19:23:36.355317555+01:00","level":"INFO","msg":"stream: starting","core version":"0.23.1"}
+{"time":"2025-12-13T19:23:36.748680777+01:00","level":"INFO","msg":"stream: created new stream","id":"21arconc"}
+{"time":"2025-12-13T19:23:36.748772333+01:00","level":"INFO","msg":"handler: started","stream_id":"21arconc"}
+{"time":"2025-12-13T19:23:36.748961411+01:00","level":"INFO","msg":"stream: started","id":"21arconc"}
+{"time":"2025-12-13T19:23:36.748972399+01:00","level":"INFO","msg":"writer: started","stream_id":"21arconc"}
+{"time":"2025-12-13T19:23:36.748994505+01:00","level":"INFO","msg":"sender: started","stream_id":"21arconc"}
+{"time":"2025-12-13T19:28:40.657727202+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-12-13T19:28:40.884087203+01:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-12-13T19:28:40.892475728+01:00","level":"INFO","msg":"stream: closing","id":"21arconc"}
+{"time":"2025-12-13T19:28:40.892497657+01:00","level":"INFO","msg":"handler: closed","stream_id":"21arconc"}
+{"time":"2025-12-13T19:28:40.892609124+01:00","level":"INFO","msg":"sender: closed","stream_id":"21arconc"}
+{"time":"2025-12-13T19:28:40.892650114+01:00","level":"INFO","msg":"stream: closed","id":"21arconc"}

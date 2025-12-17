@@ -1,0 +1,22 @@
+2025-12-13 21:27:48,796 INFO    MainThread:1099989 [wandb_init.py:setup_run_log_directory():714] Logging user logs to /home/gasbert/master/C3/project-team-3/Week2/wandb/run-20251213_212748-94uvq6tv/logs/debug.log
+2025-12-13 21:27:48,796 INFO    MainThread:1099989 [wandb_init.py:setup_run_log_directory():715] Logging internal logs to /home/gasbert/master/C3/project-team-3/Week2/wandb/run-20251213_212748-94uvq6tv/logs/debug-internal.log
+2025-12-13 21:27:48,796 INFO    MainThread:1099989 [wandb_init.py:init():841] calling init triggers
+2025-12-13 21:27:48,797 INFO    MainThread:1099989 [wandb_init.py:init():846] wandb.init called with sweep_config: {}
+config: {'patch_size': 16, 'aggregation': 'max', 'hidden_dim': 300, 'learning_rate': 0.001, 'epochs': 60, 'batch_size_train': 1028, 'batch_size_test': 1028, 'model': 'SimpleModel', '_wandb': {}}
+2025-12-13 21:27:48,797 INFO    MainThread:1099989 [wandb_init.py:init():889] starting backend
+2025-12-13 21:27:48,797 INFO    MainThread:1099989 [wandb_init.py:init():892] sending inform_init request
+2025-12-13 21:27:48,800 INFO    MainThread:1099989 [wandb_init.py:init():900] backend started and connected
+2025-12-13 21:27:48,805 INFO    MainThread:1099989 [wandb_init.py:init():970] updated telemetry
+2025-12-13 21:27:48,880 INFO    MainThread:1099989 [wandb_init.py:init():994] communicating run to backend with 90.0 second timeout
+2025-12-13 21:27:49,522 INFO    MainThread:1099989 [wandb_init.py:init():1041] starting run threads in backend
+2025-12-13 21:27:49,650 INFO    MainThread:1099989 [wandb_run.py:_console_start():2521] atexit reg
+2025-12-13 21:27:49,651 INFO    MainThread:1099989 [wandb_run.py:_redirect():2369] redirect: wrap_raw
+2025-12-13 21:27:49,652 INFO    MainThread:1099989 [wandb_run.py:_redirect():2438] Wrapping output streams.
+2025-12-13 21:27:49,652 INFO    MainThread:1099989 [wandb_run.py:_redirect():2461] Redirects installed.
+2025-12-13 21:27:49,654 INFO    MainThread:1099989 [wandb_init.py:init():1081] run started, returning control to user process
+2025-12-13 21:27:49,663 INFO    MainThread:1099989 [wandb_watch.py:_watch():68] Watching
+2025-12-13 21:37:48,281 INFO    MainThread:1099989 [wandb_run.py:_finish():2287] finishing run gerardasbert-universitat-aut-noma-de-barcelona/patch-grid-search/94uvq6tv
+2025-12-13 21:37:48,282 INFO    MainThread:1099989 [wandb_run.py:_atexit_cleanup():2486] got exitcode: 0
+2025-12-13 21:37:48,283 INFO    MainThread:1099989 [wandb_run.py:_restore():2468] restore
+2025-12-13 21:37:48,283 INFO    MainThread:1099989 [wandb_run.py:_restore():2474] restore done
+2025-12-13 21:37:49,283 INFO    MainThread:1099989 [wandb_run.py:_footer_sync_info():3862] logging synced files

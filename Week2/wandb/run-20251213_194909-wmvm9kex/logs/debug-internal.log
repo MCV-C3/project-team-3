@@ -1,0 +1,12 @@
+{"time":"2025-12-13T19:49:09.898257654+01:00","level":"INFO","msg":"stream: starting","core version":"0.23.1"}
+{"time":"2025-12-13T19:49:10.286641324+01:00","level":"INFO","msg":"stream: created new stream","id":"wmvm9kex"}
+{"time":"2025-12-13T19:49:10.286796421+01:00","level":"INFO","msg":"handler: started","stream_id":"wmvm9kex"}
+{"time":"2025-12-13T19:49:10.28696862+01:00","level":"INFO","msg":"stream: started","id":"wmvm9kex"}
+{"time":"2025-12-13T19:49:10.286998001+01:00","level":"INFO","msg":"writer: started","stream_id":"wmvm9kex"}
+{"time":"2025-12-13T19:49:10.2870156+01:00","level":"INFO","msg":"sender: started","stream_id":"wmvm9kex"}
+{"time":"2025-12-13T19:54:17.238043589+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-12-13T19:54:17.466127122+01:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-12-13T19:54:17.474388204+01:00","level":"INFO","msg":"stream: closing","id":"wmvm9kex"}
+{"time":"2025-12-13T19:54:17.474408195+01:00","level":"INFO","msg":"handler: closed","stream_id":"wmvm9kex"}
+{"time":"2025-12-13T19:54:17.474504304+01:00","level":"INFO","msg":"sender: closed","stream_id":"wmvm9kex"}
+{"time":"2025-12-13T19:54:17.474518176+01:00","level":"INFO","msg":"stream: closed","id":"wmvm9kex"}

@@ -1,0 +1,12 @@
+{"time":"2025-12-15T12:59:43.123841798+01:00","level":"INFO","msg":"stream: starting","core version":"0.23.1"}
+{"time":"2025-12-15T12:59:43.442102068+01:00","level":"INFO","msg":"stream: created new stream","id":"tufeqgmx"}
+{"time":"2025-12-15T12:59:43.442237001+01:00","level":"INFO","msg":"handler: started","stream_id":"tufeqgmx"}
+{"time":"2025-12-15T12:59:43.442330265+01:00","level":"INFO","msg":"stream: started","id":"tufeqgmx"}
+{"time":"2025-12-15T12:59:43.442361833+01:00","level":"INFO","msg":"sender: started","stream_id":"tufeqgmx"}
+{"time":"2025-12-15T12:59:43.442369824+01:00","level":"INFO","msg":"writer: started","stream_id":"tufeqgmx"}
+{"time":"2025-12-15T13:05:42.261253818+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-12-15T13:05:42.578399344+01:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-12-15T13:05:42.587418776+01:00","level":"INFO","msg":"stream: closing","id":"tufeqgmx"}
+{"time":"2025-12-15T13:05:42.587442923+01:00","level":"INFO","msg":"handler: closed","stream_id":"tufeqgmx"}
+{"time":"2025-12-15T13:05:42.587536269+01:00","level":"INFO","msg":"sender: closed","stream_id":"tufeqgmx"}
+{"time":"2025-12-15T13:05:42.587594941+01:00","level":"INFO","msg":"stream: closed","id":"tufeqgmx"}

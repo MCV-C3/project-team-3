@@ -1,0 +1,11 @@
+
+===================================
+PATCH SIZE: 256 | AGG: mean
+===================================
+Training:   0%|                                                                                                                    | 0/50 [00:01<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/gasbert/master/C3/project-team-3/Week2/gridsearch.py", line 174, in <module>
+    train_loss, train_acc = train_patches(
+  File "/home/gasbert/master/C3/project-team-3/Week2/gridsearch.py", line 36, in train_patches
+    patches = inputs.unfold(2, patch_size, patch_size)\
+RuntimeError: maximum size for tensor at dimension 2 is 224 but size is 256

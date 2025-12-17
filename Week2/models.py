@@ -32,3 +32,23 @@ class SimpleModel(nn.Module):
         x = self.output_layer(x)
         
         return x
+
+
+# -------------------------
+# Flexible MLP (para variar layers/neurons)
+# -------------------------
+class FlexibleMLP(nn.Module):
+    def __init__(self, input_d: int, hidden_dims: List[int], output_d: int):
+        super().__init__()
+        layers: List[nn.Module] = []
+        prev = input_d
+        for h in hidden_dims:
+            layers.append(nn.Linear(prev, h))
+            layers.append(nn.ReLU())
+            prev = h
+        layers.append(nn.Linear(prev, output_d))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        return self.net(x)

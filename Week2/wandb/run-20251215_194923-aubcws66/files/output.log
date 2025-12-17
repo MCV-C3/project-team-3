@@ -1,0 +1,12 @@
+
+===================================
+PATCH SIZE: 4 | AGG: mean
+===================================
+Training:   2%|█                                                               | 1/60 [00:09<09:06,  9.27s/it]
+Epoch 1/60 | Train Acc: 0.1028 | Test Acc: 0.1132
+Traceback (most recent call last):
+  File "/home/gasbert/master/C3/project-team-3/Week2/./gridsearch.py", line 175, in <module>
+    train_loss, train_acc = train_patches(
+  File "/home/gasbert/master/C3/project-team-3/Week2/./gridsearch.py", line 33, in train_patches
+    inputs, labels = inputs.to(device), labels.to(device)
+KeyboardInterrupt

@@ -1,0 +1,56 @@
+
+===================================
+PATCH SIZE: 32 | AGG: max
+===================================
+Training:  62%|██████████████████████████████████████████████████████████████████▎                                        | 31/50 [03:08<01:55,  6.08s/it]
+Epoch 1/50 | Train Acc: 0.1217 | Test Acc: 0.1700
+Epoch 2/50 | Train Acc: 0.1811 | Test Acc: 0.1932
+Epoch 3/50 | Train Acc: 0.1867 | Test Acc: 0.1982
+Epoch 4/50 | Train Acc: 0.1962 | Test Acc: 0.2005
+Epoch 5/50 | Train Acc: 0.2007 | Test Acc: 0.1991
+Epoch 6/50 | Train Acc: 0.2025 | Test Acc: 0.2014
+Epoch 7/50 | Train Acc: 0.2095 | Test Acc: 0.2141
+Epoch 8/50 | Train Acc: 0.2074 | Test Acc: 0.2077
+Epoch 9/50 | Train Acc: 0.2167 | Test Acc: 0.1986
+Epoch 10/50 | Train Acc: 0.2084 | Test Acc: 0.2182
+Epoch 11/50 | Train Acc: 0.2182 | Test Acc: 0.2136
+Epoch 12/50 | Train Acc: 0.2236 | Test Acc: 0.2191
+Epoch 13/50 | Train Acc: 0.2263 | Test Acc: 0.2223
+Epoch 14/50 | Train Acc: 0.2323 | Test Acc: 0.1941
+Epoch 15/50 | Train Acc: 0.2384 | Test Acc: 0.2214
+Epoch 16/50 | Train Acc: 0.2359 | Test Acc: 0.2095
+Epoch 17/50 | Train Acc: 0.2355 | Test Acc: 0.2209
+Epoch 18/50 | Train Acc: 0.2380 | Test Acc: 0.2095
+Epoch 19/50 | Train Acc: 0.2446 | Test Acc: 0.2159
+Epoch 20/50 | Train Acc: 0.2516 | Test Acc: 0.2150
+Epoch 21/50 | Train Acc: 0.2501 | Test Acc: 0.2268
+Epoch 22/50 | Train Acc: 0.2533 | Test Acc: 0.2305
+Epoch 23/50 | Train Acc: 0.2594 | Test Acc: 0.2191
+Epoch 24/50 | Train Acc: 0.2601 | Test Acc: 0.2059
+Epoch 25/50 | Train Acc: 0.2721 | Test Acc: 0.2168
+Epoch 26/50 | Train Acc: 0.2698 | Test Acc: 0.2223
+Epoch 27/50 | Train Acc: 0.2721 | Test Acc: 0.2164
+Epoch 28/50 | Train Acc: 0.2822 | Test Acc: 0.2305
+Epoch 29/50 | Train Acc: 0.2784 | Test Acc: 0.2223
+Epoch 30/50 | Train Acc: 0.2856 | Test Acc: 0.2155
+Epoch 31/50 | Train Acc: 0.2837 | Test Acc: 0.2423
+Epoch 32/50 | Train Acc: 0.2974 | Test Acc: 0.2286
+Epoch 33/50 | Train Acc: 0.2968 | Test Acc: 0.2182
+Epoch 34/50 | Train Acc: 0.3047 | Test Acc: 0.2286
+Epoch 35/50 | Train Acc: 0.3133 | Test Acc: 0.2323
+Epoch 36/50 | Train Acc: 0.3129 | Test Acc: 0.2227
+Epoch 37/50 | Train Acc: 0.3182 | Test Acc: 0.2245
+Epoch 38/50 | Train Acc: 0.3224 | Test Acc: 0.2350
+Epoch 39/50 | Train Acc: 0.3257 | Test Acc: 0.2277
+Epoch 40/50 | Train Acc: 0.3259 | Test Acc: 0.2300
+Epoch 41/50 | Train Acc: 0.3315 | Test Acc: 0.2382
+Epoch 42/50 | Train Acc: 0.3448 | Test Acc: 0.2364
+Epoch 43/50 | Train Acc: 0.3476 | Test Acc: 0.2223
+Epoch 44/50 | Train Acc: 0.3420 | Test Acc: 0.2277
+Epoch 45/50 | Train Acc: 0.3539 | Test Acc: 0.2200
+Epoch 46/50 | Train Acc: 0.3562 | Test Acc: 0.2273
+Epoch 47/50 | Train Acc: 0.3702 | Test Acc: 0.2277
+Epoch 48/50 | Train Acc: 0.3807 | Test Acc: 0.2327
+Epoch 49/50 | Train Acc: 0.3795 | Test Acc: 0.2350
+Epoch 50/50 | Train Acc: 0.3908 | Test Acc: 0.2336
+BEST TEST ACC: 0.2423

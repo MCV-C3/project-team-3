@@ -1,0 +1,12 @@
+{"time":"2025-12-13T19:33:47.960567698+01:00","level":"INFO","msg":"stream: starting","core version":"0.23.1"}
+{"time":"2025-12-13T19:33:48.248727943+01:00","level":"INFO","msg":"stream: created new stream","id":"eoyog9ab"}
+{"time":"2025-12-13T19:33:48.248858391+01:00","level":"INFO","msg":"handler: started","stream_id":"eoyog9ab"}
+{"time":"2025-12-13T19:33:48.249020363+01:00","level":"INFO","msg":"stream: started","id":"eoyog9ab"}
+{"time":"2025-12-13T19:33:48.24904918+01:00","level":"INFO","msg":"writer: started","stream_id":"eoyog9ab"}
+{"time":"2025-12-13T19:33:48.249066971+01:00","level":"INFO","msg":"sender: started","stream_id":"eoyog9ab"}
+{"time":"2025-12-13T19:38:53.197002788+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-12-13T19:38:53.404801584+01:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-12-13T19:38:53.413541282+01:00","level":"INFO","msg":"stream: closing","id":"eoyog9ab"}
+{"time":"2025-12-13T19:38:53.413595034+01:00","level":"INFO","msg":"handler: closed","stream_id":"eoyog9ab"}
+{"time":"2025-12-13T19:38:53.413693642+01:00","level":"INFO","msg":"sender: closed","stream_id":"eoyog9ab"}
+{"time":"2025-12-13T19:38:53.413707782+01:00","level":"INFO","msg":"stream: closed","id":"eoyog9ab"}
