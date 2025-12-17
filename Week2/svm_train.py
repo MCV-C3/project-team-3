@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import csv
 import json
 import os
@@ -5,9 +6,7 @@ from typing import *
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torchvision.transforms.v2 as F
-import wandb
 from dataset import C3Dataset
 from models import FlexibleMlp
 from sklearn.svm import SVC
@@ -86,7 +85,7 @@ if __name__ == "__main__":
     with open("results/best_coarse_config.json", "r") as f:
         best_coarse = json.load(f)
     
-    best_model = torch.load('results/checkpoints/fine_r128_b256_h[128, 128].pt')
+    best_model = torch.load('results/checkpoints/fine_r64_b256_h[300, 300].pt')
 
     resize = int(best_coarse["resize"])
     batch_size = int(best_coarse["batch_size"])
@@ -132,11 +131,11 @@ if __name__ == "__main__":
     svm_kernels = ['linear', 'poly', 'rbf', 'sigmoid']
 
     results = []
-    group_name = f"svm_r{resize}_b{batch_size}_h[128, 128]"
+    group_name = f"svm_r{resize}_b{batch_size}_h[300, 300]"
 
     for kernel in svm_kernels:
         print(f"Training SVM with kernel {kernel}")
-
+        
         svm = SVC(kernel=kernel)
         svm = svm.fit(train_x, train_y)
         y_pred = svm.predict(val_x)
@@ -145,12 +144,27 @@ if __name__ == "__main__":
         result = {
             'resize': resize,
             'batch_size': batch_size,
-            'hidden_dims': [128, 128],
+            'hidden_dims': hidden_dims,
             'kernel': kernel,
             'val_acc': float(acc)
 
         }
         results.append(result)
+        
+        # Log images Train
+        y_pred = svm.predict(train_x[-2:])
+        for i in range(1, 3):
+            plt.imshow(train_loader.dataset[-i][0].permute(1, 2, 0).cpu().detach().numpy())
+            plt.title(f"Predicted: {train_loader.dataset.classes[y_pred[-i]]}\nGT: {train_loader.dataset.classes[train_y[-i]]}")
+            plt.axis('off')
+            plt.savefig(f"results/images/{kernel}_TrainSample{i}.png")
+
+        y_pred = svm.predict(val_x[-2:])
+        for i in range(1, 3):
+            plt.imshow(val_loader.dataset[-i][0].permute(1, 2, 0).cpu().detach().numpy())
+            plt.title(f"Predicted: {val_loader.dataset.classes[y_pred[-i]]}\nGT: {val_loader.dataset.classes[val_y[-i]]}")
+            plt.axis('off')
+            plt.savefig(f"results/images/{kernel}_TestSample{i}.png")
 
     best = sorted(results, key=lambda x: (-x["val_acc"]))[0]
 
