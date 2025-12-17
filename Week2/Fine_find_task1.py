@@ -91,8 +91,7 @@ def make_transforms(resize: int):
         F.ToDtype(torch.float32, scale=True),
         F.Resize(size=(resize, resize)),
         F.RandomHorizontalFlip(),
-        F.RandomVerticalFlip(),
-        F.RandomRotation(90)
+        F.RandomRotation(20)
     ])
     val_transforms = F.Compose([
         F.ToImage(),
