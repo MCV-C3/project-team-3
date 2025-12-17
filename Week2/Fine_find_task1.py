@@ -213,6 +213,15 @@ if __name__ == "__main__":
             if va_acc > best_val_acc:
                 best_val_acc = va_acc
                 best_epoch = epoch + 1
+                model: nn.Module = model.to(device='cpu')
+                torch.save({
+                    'epoch': best_epoch,
+                    'hidden_dims': cfg['hidden_dims'],
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'accuracy': best_val_acc
+                }, f"results/checkpoints/fine_r{cfg['resize']}_b{cfg['batch_size']}_h{cfg['hidden_dims']}.pt")
+                model: nn.Module = model.to(device=device)
 
             wandb.log({
                 "train/loss": tr_loss,
@@ -250,15 +259,6 @@ if __name__ == "__main__":
         run.summary["best_val_acc"] = best_val_acc
         run.summary["best_epoch"] = best_epoch
         wandb.finish()
-        
-        model: nn.Module = model.to(device='cpu')
-        torch.save({
-            'epoch': best_epoch,
-            'hidden_dims': cfg['hidden_dims'],
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'accuracy': best_val_acc
-        }, f"results/checkpoints/fine_r{cfg['resize']}_b{cfg['batch_size']}_h{cfg['hidden_dims']}.pt")
 
         del model
         if torch.cuda.is_available():
