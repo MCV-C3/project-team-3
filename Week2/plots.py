@@ -50,6 +50,8 @@ def plot3():
     fig = plt.figure(figsize=(9, 6))
     
     ax = sns.barplot(df, x='kernel', y='val_acc', palette='Set1', order=df.sort_values('val_acc', ascending=False).kernel)
+    ax.set_axisbelow(True)
+    ax.grid(True, axis='both')
     ax.set_title("Best Val Accuracy vs Kernel Type")
     ax.set_xlabel("Kernel Type")
     ax.set_ylabel("Val Accuracy")
@@ -57,5 +59,22 @@ def plot3():
     fig.add_axes(ax)
     fig.savefig("results/svm_barplot.png")
 
+def plot4():
+    df = pd.read_csv("results/patch_results.csv")
+    df['run_name'] = df.apply(lambda x: f"patch{x.patch_size}_agg{x.agg_method}", axis=1)
+
+    fig = plt.figure(figsize=(9, 6))
+    
+    ax = sns.barplot(df, x='run_name', y='best_val_acc', palette='Set1', order=df.sort_values('best_val_acc', ascending=False).run_name)
+    ax.set_axisbelow(True)
+    ax.grid(True, axis='both')
+    ax.set_title("Best Val Accuracy by Size of patch and Aggregation method")
+    ax.set_xlabel("Run name")
+    ax.set_ylabel("Best Val Accuracy")
+    ax.tick_params('x', rotation=45)
+    fig.add_axes(ax)
+    fig.tight_layout()
+    fig.savefig("results/patch_barplot.png")
+
 if __name__ == "__main__":
-    plot3()
+    plot4()
