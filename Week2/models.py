@@ -83,7 +83,6 @@ class PatchMlp(nn.Module):
         B, L = x.shape
         x1 = x.contiguous().view(batch_size, -1, L).contiguous()
 
-        # Aggregation
         if self.aggregation_method == 'max':
             output = x1.max(dim=1, keepdim=False).values
         elif self.aggregation_method == 'mean':
@@ -100,8 +99,7 @@ class PatchMlp(nn.Module):
     
     def features(self, x: torch.Tensor):
         B, C, H, W = x.shape
-        if x.ndim > 2:
-            x = x.view(B, -1)
-        output = self.net(x)
+        patched_x = self.patch_image(x)
+        output = self.net(patched_x)
         output = self.aggregate_result(output, B)
         return output
