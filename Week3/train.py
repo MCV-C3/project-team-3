@@ -1,7 +1,7 @@
 import argparse
 import os
 
-from torchvision.models.inception import InceptionOutputs
+import pandas as pd
 import torch
 import wandb
 import yaml
@@ -10,6 +10,7 @@ from models import WraperModel
 from torch.nn import CrossEntropyLoss
 from torch.optim import Adagrad, Adam, AdamW, Optimizer, RMSprop
 from torch.utils.data import DataLoader
+from torchvision.models.inception import InceptionOutputs
 from torchvision.transforms import (Compose, RandomHorizontalFlip,
                                     RandomRotation, Resize)
 from tqdm import tqdm
@@ -112,11 +113,11 @@ def test(model: WraperModel, dataloader: DataLoader, criterion: CrossEntropyLoss
     return mean_loss.item(), mean_accuracy.item(), img_list
 
 
-def main_training(cfg: dict) -> tuple[float, float]:
+def main_training(cfg: dict, cfg_naming: dict) -> tuple[float, float]:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Datasets
-    train_dataloader, test_dataloader = make_dataset(cfg['dataset'], device, batch_size=cfg['batch_size'])
+    train_dataloader, test_dataloader = make_dataset(cfg_naming['dataset'], device, batch_size=cfg['batch_size'])
 
     # Model
     model = WraperModel(len(train_dataloader.dataset.classes)).to(device=device)
@@ -134,8 +135,8 @@ def main_training(cfg: dict) -> tuple[float, float]:
     
     # Wandb
     run = wandb.init(
-        name = cfg["name"],
-        project = cfg["project"],
+        name = cfg_naming["name"],
+        project = cfg_naming["project"],
         config=cfg
     )
 
@@ -144,6 +145,7 @@ def main_training(cfg: dict) -> tuple[float, float]:
         for e in pbar:
             train_mean_loss, train_mean_accuracy, train_samples = train(model, train_dataloader, criterion, optimizer)
             test_mean_loss, test_mean_accuracy, test_samples = test(model, test_dataloader, criterion)
+
             # Logs
             run.log({
                 "train/loss": train_mean_loss,
@@ -161,7 +163,7 @@ def main_training(cfg: dict) -> tuple[float, float]:
             pbar.set_postfix({"Loss": test_mean_loss, "Acc": test_mean_accuracy})
 
             # Best Values
-            if test_mean_accuracy < best_accuracy:
+            if test_mean_accuracy > best_accuracy:
                 best_accuracy = test_mean_accuracy
                 torch.save({
                     "epoch": e,
@@ -169,7 +171,7 @@ def main_training(cfg: dict) -> tuple[float, float]:
                     "accuracy": best_accuracy,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict()
-                }, cfg["checkpoint"])
+                }, cfg_naming["checkpoint"])
 
             if test_mean_loss < best_loss:
                 best_loss = test_mean_loss
@@ -185,18 +187,25 @@ def main_training(cfg: dict) -> tuple[float, float]:
         run.finish(0)
         return best_loss, best_accuracy
 
+
 def main():
     # Process parameters for training (can be a grid search by repeteadly calling main_training() with different configurations)
     parser = argparse.ArgumentParser()
     parser.add_argument("cfg", type=str, help="Path to config file.")
     cfg_file = parser.parse_args().cfg
     cfg = parse_config(cfg_file)
+    results = []
 
-    best_loss, best_accuracy = main_training(cfg)
+    best_loss, best_accuracy = main_training(cfg["config"], cfg["names"])
+
+    results.append(cfg["config"] | {"best_loss": best_loss, "best_accuracy": best_accuracy})
+    results = {k: [dic[k] for dic in results] for k in results[0]}
+    df = pd.DataFrame.from_dict(results, 'columns')
+    df.to_csv(cfg["names"]["results_csv"])
+
 
 if __name__ == "__main__":
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     main()
-
     

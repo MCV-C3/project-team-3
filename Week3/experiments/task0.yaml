@@ -1,11 +1,13 @@
-dataset: /home/msiau/data/tmp/agarciat/MCVC/C3/2425/MIT_small_train_1
-batch_size: 64
+config:
+  batch_size: 64
+  max_epochs: 5
+  patience: 10
+  optimizer: adam
+  lr: 1e-3
 
-max_epochs: 100
-patience: 10
-optimizer: adam
-lr: 1e-3
-checkpoint: results/checkpoints/test_model.pt
-
-name: task0_test
-project: MCVCC3-Team3-2526
+names:
+  dataset: /home/msiau/data/tmp/agarciat/MCVC/C3/2425/MIT_small_train_1
+  checkpoint: results/checkpoints/test_model.pt
+  name: task0_test
+  project: MCVCC3-Team3-2526
+  results_csv: results/task0_test.csv
