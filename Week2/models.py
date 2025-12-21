@@ -1,11 +1,23 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
+from typing import List
 
-from typing import *
 
 class SimpleModel(nn.Module):
-
+    """
+    Simple MLP for patch-based image classification
+    
+    Architecture:
+        Input -> layer1 (hidden_d) -> ReLU -> layer2 (hidden_d) -> ReLU -> output_layer (output_d)
+    """
+    
     def __init__(self, input_d: int, hidden_d: int, output_d: int):
+        """
+        Args:
+            input_d: Input dimension (C * patch_size * patch_size)
+            hidden_d: Hidden layer dimension
+            output_d: Output dimension (number of classes)
+        """
         super(SimpleModel, self).__init__()
 
         self.input_d = input_d
@@ -19,43 +31,23 @@ class SimpleModel(nn.Module):
         self.activation = nn.ReLU()
 
     def forward(self, x):
+        """
+        Forward pass
+        
+        Args:
+            x: Input tensor of shape [batch_size, input_d] or [batch_size, C, H, W]
+            
+        Returns:
+            Output tensor of shape [batch_size, output_d]
+        """
         x = x.view(x.shape[0], -1)
         x = self.layer1(x)
         x = self.activation(x)
         x = self.layer2(x)
         x = self.activation(x)
-
         x = self.output_layer(x)
         
         return x
-
-class FlexibleMlp(nn.Module):
-    def __init__(self, input_d: int, hidden_dims: List[int], output_d: int):
-        super().__init__()
-        layers = []
-        input_dim = input_d
-        activation = nn.ReLU()
-        for dim in hidden_dims:
-            layers.append(nn.Linear(input_dim, dim))
-            layers.append(activation)
-            input_dim = dim
-        self.last_layer = nn.Linear(input_dim, output_d)
-        self.net = nn.Sequential(*layers)
-    
-    def forward(self, x: torch.Tensor):
-        B, C, H, W = x.shape
-        if x.ndim > 2:
-            x = x.view(B, -1)
-        x1 = self.net(x)
-        output = self.last_layer(x1)
-        return output
-    
-    def features(self, x: torch.Tensor):
-        B, C, H, W = x.shape
-        if x.ndim > 2:
-            x = x.view(B, -1)
-        output = self.net(x)
-        return output
 
 # -------------------------
 # Patch MLP (para variar layers/neurons)
