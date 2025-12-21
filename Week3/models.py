@@ -20,15 +20,12 @@ import pdb
 
 
 class SimpleModel(nn.Module):
-
     def __init__(self, input_d: int, hidden_d: int, output_d: int):
-
-        super(SimpleModel, self).__init__()
+        super().__init__()
 
         self.input_d = input_d
         self.hidden_d = hidden_d
         self.output_d = output_d
-
 
         self.layer1 = nn.Linear(input_d, hidden_d)
         self.layer2 = nn.Linear(hidden_d, hidden_d)
@@ -52,23 +49,24 @@ class SimpleModel(nn.Module):
 
 class WraperModel(nn.Module):
     def __init__(self, num_classes: int, feature_extraction: bool=True):
-        super(WraperModel, self).__init__()
+        super().__init__()
 
-        # Load pretrained VGG16 model
-        self.backbone = models.vgg16(weights='IMAGENET1K_V1')
+        # Load pretrained InceptionV3 model
+        self.backbone = models.inception_v3(weights='IMAGENET1K_V1')
+        self.backbone.aux_logits = False
         
         if feature_extraction:
             self.set_parameter_requires_grad(feature_extracting=feature_extraction)
 
         # Modify the classifier for the number of classes
-        self.backbone.classifier[-1] = nn.Linear(self.backbone.classifier[-1].in_features, num_classes)
+        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, num_classes)
+
 
     def forward(self, x):
         return self.backbone(x)
     
 
     def extract_feature_maps(self, input_image:torch.Tensor):
-
         conv_weights =[]
         conv_layers = []
         total_conv_layers = 0
@@ -78,7 +76,6 @@ class WraperModel(nn.Module):
                 total_conv_layers += 1
                 conv_weights.append(module.weight)
                 conv_layers.append(module)
-
 
         print("TOTAL CONV LAYERS: ", total_conv_layers)
         feature_maps = []  # List to store feature maps
@@ -90,9 +87,6 @@ class WraperModel(nn.Module):
             layer_names.append(str(layer))
 
         return feature_maps, layer_names
-
-
-
         
 
     def extract_features_from_hooks(self, x, layers: List[str]):
@@ -132,6 +126,7 @@ class WraperModel(nn.Module):
 
         return outputs
 
+
     def modify_layers(self, modify_fn: Callable[[nn.Module], nn.Module]):
         """
         Modify layers of the model using a provided function.
@@ -150,20 +145,14 @@ class WraperModel(nn.Module):
                 param.requires_grad = False
 
 
-
     def extract_grad_cam(self, input_image: torch.Tensor, 
                          target_layer: List[Type[nn.Module]], 
                          targets: List[Type[ClassifierOutputTarget]]) -> Type[GradCAMPlusPlus]:
-
-        
-
         with GradCAMPlusPlus(model=self.backbone, target_layers=target_layer) as cam:
 
             grayscale_cam = cam(input_tensor=input_image, targets=targets)[0, :]
 
         return grayscale_cam
-
-
 
 
 
