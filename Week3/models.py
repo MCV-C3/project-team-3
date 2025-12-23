@@ -52,8 +52,13 @@ class WraperModel(nn.Module):
         super().__init__()
 
         # Load pretrained InceptionV3 model
-        self.backbone = models.inception_v3(weights='IMAGENET1K_V1')
-        self.backbone.aux_logits = False
+        self.backbone = models.inception_v3(
+            weights="IMAGENET1K_V1",
+            aux_logits=True
+        )
+
+        # Disable auxiliary classifier safely
+        self.backbone.AuxLogits = None
         
         if feature_extraction:
             self.set_parameter_requires_grad(feature_extracting=feature_extraction)
@@ -63,7 +68,13 @@ class WraperModel(nn.Module):
 
 
     def forward(self, x):
-        return self.backbone(x)
+        outputs = self.backbone(x)
+
+        # In training mode, Inception returns InceptionOutputs
+        if isinstance(outputs, tuple) or hasattr(outputs, "logits"):
+            return outputs.logits
+
+        return outputs
     
 
     def extract_feature_maps(self, input_image:torch.Tensor):
@@ -153,6 +164,25 @@ class WraperModel(nn.Module):
             grayscale_cam = cam(input_tensor=input_image, targets=targets)[0, :]
 
         return grayscale_cam
+
+    
+    def freeze_all_backbone(self):
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+
+    def unfreeze_blocks(self, block_names: List[str]):
+        """
+        Unfreeze specific Inception blocks by name
+        Example block_names: ["Mixed_7c", "Mixed_7b"]
+        """
+        for name, module in self.backbone.named_children():
+            if name in block_names:
+                for p in module.parameters():
+                    p.requires_grad = True
+
+
+
 
 
 
