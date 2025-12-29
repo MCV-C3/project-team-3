@@ -46,22 +46,21 @@ class SimpleModel(nn.Module):
         return x
     
 
-
 class WraperModel(nn.Module):
-    def __init__(self, num_classes: int, feature_extraction: bool=True):
+    def __init__(self, num_classes, pretrained=False):
         super().__init__()
 
         # Load pretrained InceptionV3 model
         self.backbone = models.inception_v3(
-            weights="IMAGENET1K_V1",
+            weights=None if not pretrained else "IMAGENET1K_V1",
             aux_logits=True
         )
 
         # Disable auxiliary classifier safely
         self.backbone.AuxLogits = None
-        
-        if feature_extraction:
-            self.set_parameter_requires_grad(feature_extracting=feature_extraction)
+
+        if pretrained:
+            self.set_parameter_requires_grad(feature_extracting=pretrained)
 
         # Modify the classifier for the number of classes
         self.backbone.fc = nn.Linear(self.backbone.fc.in_features, num_classes)
