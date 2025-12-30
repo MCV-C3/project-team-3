@@ -1,3 +1,7 @@
+from logging import config
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+
 from typing import *
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
@@ -6,12 +10,36 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from Week3.utils import SimpleModel, WraperModel
+from utils_gridsearch import SimpleModel, WraperModel
 import torchvision.transforms.v2  as F
 from torchviz import make_dot
 import tqdm
+import wandb
+
 
 from torchvision.transforms import Compose, ToTensor, Normalize, RandomHorizontalFlip, RandomResizedCrop
+
+
+UNFREEZE_SCHEDULE = [
+    ["Mixed_7c"],                      # phase 1
+    ["Mixed_7b", "Mixed_7c"],           # phase 2
+    ["Mixed_7a", "Mixed_7b", "Mixed_7c"],
+]
+
+best_val_loss = float("inf")
+plateau_counter = 0
+PATIENCE = 0   # epochs without improvement
+phase = 0
+
+CROSS_VAL = True
+CV_FOLDS = [
+    "/data2/users/gasbert/master/C3/2425/MIT_small_train_1",
+    "/data2/users/gasbert/master/C3/2425/MIT_small_train_2",
+    "/data2/users/gasbert/master/C3/2425/MIT_small_train_3",
+    "/data2/users/gasbert/master/C3/2425/MIT_small_train_4",
+]
+
+NUM_EPOCHS = 60
 
 
 # Train function
@@ -45,7 +73,7 @@ def train(model, dataloader, criterion, optimizer, device):
 
 def test(model, dataloader, criterion, device):
     model.eval()
-    test_loss = 0.0
+    val_loss = 0.0
     correct, total = 0, 0
 
     with torch.no_grad():
@@ -57,12 +85,12 @@ def test(model, dataloader, criterion, device):
             loss = criterion(outputs, labels)
 
             # Track loss and accuracy
-            test_loss += loss.item() * inputs.size(0)
+            val_loss += loss.item() * inputs.size(0)
             _, predicted = outputs.max(1)
             correct += (predicted == labels).sum().item()
             total += labels.size(0)
 
-    avg_loss = test_loss / total
+    avg_loss = val_loss / total
     accuracy = correct / total
     return avg_loss, accuracy
 
@@ -107,6 +135,110 @@ def get_data_transforms():
         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
+
+def get_dataloaders(train_root, test_root, batch_size=16, input_size=224):
+    transformation = F.Compose([
+        F.ToImage(),
+        F.ToDtype(torch.float32, scale=True),
+        F.Resize(size=(input_size, input_size)),
+    ])
+
+    train_dataset = ImageFolder(os.path.join(train_root, "train"), transform=transformation)
+    test_dataset  = ImageFolder(os.path.join(test_root, "test"), transform=transformation)
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=8,
+        pin_memory=True
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=8,
+        pin_memory=True
+    )
+
+    return train_loader, test_loader
+
+
+def run_training(train_loader, val_loader, config, fold_id=None):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = WraperModel(
+        num_classes=8,
+        pretrained=False,
+        head_depth=config.head_depth,
+        hidden_dim=config.hidden_dim,
+        dropout=config.dropout,
+        use_batchnorm=config.use_batchnorm,
+    ).to(device)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=config.lr)
+
+    train_losses, train_accuracies = [], []
+    val_losses, val_accuracies = [], []
+
+    for epoch in tqdm.tqdm(range(NUM_EPOCHS), desc=f"Fold {fold_id} Training"):
+        train_loss, train_acc = train(model, train_loader, criterion, optimizer, device)
+        val_loss, val_acc = test(model, val_loader, criterion, device)
+
+        train_losses.append(train_loss)
+        train_accuracies.append(train_acc)
+        val_losses.append(val_loss)
+        val_accuracies.append(val_acc)
+
+        print(f"Epoch {epoch + 1}/{NUM_EPOCHS} - "
+              f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}, "
+              f"Test Loss: {val_loss:.4f}, Test Accuracy: {val_acc:.4f}")
+        
+
+        wandb.log({
+            "epoch": epoch,
+            "train/loss": train_loss,
+            "train/accuracy": train_acc,
+            "val/loss": val_loss,
+            "val/accuracy": val_acc,
+        })
+
+    return {
+        "train_loss": train_losses,
+        "train_acc": train_accuracies,
+        "val_loss": val_losses,
+        "val_acc": val_accuracies,
+        "final_val_acc": val_accuracies[-1],
+        "final_val_loss": val_losses[-1]
+    }
+
+
+def sweep_train():
+    wandb.init()
+    config = wandb.config
+
+    torch.manual_seed(42)
+
+    # ---- SINGLE FOLD PER SWEEP RUN ----
+    fold_path = CV_FOLDS[0]   # IMPORTANT: do NOT cross-val inside a sweep
+
+    train_loader, val_loader = get_dataloaders(
+        train_root=fold_path,
+        test_root=fold_path,
+        batch_size=config.batch_size,
+        input_size=config.input_size
+    )
+
+    run_training(
+        train_loader=train_loader,
+        val_loader=val_loader,
+        config=config,
+        fold_id=0,
+    )
+
+
 def plot_computational_graph(model: torch.nn.Module, input_size: tuple, filename: str = "computational_graph"):
     """
     Generates and saves a plot of the computational graph of the model.
@@ -127,52 +259,8 @@ def plot_computational_graph(model: torch.nn.Module, input_size: tuple, filename
     print(f"Computational graph saved as {filename}")
 
 
+
+
 if __name__ == "__main__":
 
-    torch.manual_seed(42)
-
-    transformation  = F.Compose([
-                                    F.ToImage(),
-                                    F.ToDtype(torch.float32, scale=True),
-                                    F.Resize(size=(224, 224)),
-                                ])
-    
-    data_train = ImageFolder("~/data/Master/MIT_split/train", transform=transformation)
-    data_test = ImageFolder("~/data/Master/MIT_split/test", transform=transformation) 
-
-    train_loader = DataLoader(data_train, batch_size=16, pin_memory=True, shuffle=True, num_workers=8)
-    test_loader = DataLoader(data_test, batch_size=1, pin_memory=True, shuffle=False, num_workers=8)
-
-    C, H, W = np.array(data_train[0][0]).shape
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-    model = WraperModel(num_classes=8, feature_extraction=True)#SimpleModel(input_d=C*H*W, hidden_d=300, output_d=8)
-
-    model = model.to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    num_epochs = 3
-
-    train_losses, train_accuracies = [], []
-    test_losses, test_accuracies = [], []
-    
-    for epoch in tqdm.tqdm(range(num_epochs), desc="TRAINING THE MODEL"):
-        train_loss, train_accuracy = train(model, train_loader, criterion, optimizer, device)
-        test_loss, test_accuracy = test(model, test_loader, criterion, device)
-
-        train_losses.append(train_loss)
-        train_accuracies.append(train_accuracy)
-        test_losses.append(test_loss)
-        test_accuracies.append(test_accuracy)
-
-        print(f"Epoch {epoch + 1}/{num_epochs} - "
-              f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, "
-              f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
-        
-    torch.save(model.state_dict(), "./saved_model.pt")
-
-    # Plot results
-    plot_metrics({"loss": train_losses, "accuracy": train_accuracies}, {"loss": test_losses, "accuracy": test_accuracies}, "loss")
-    plot_metrics({"loss": train_losses, "accuracy": train_accuracies}, {"loss": test_losses, "accuracy": test_accuracies}, "accuracy")
+    sweep_train()

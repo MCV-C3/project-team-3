@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
 from typing import *
 from torch.utils.data import DataLoader
@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from models import SimpleModel, WraperModel
+from Week3.utils import SimpleModel, WraperModel
 import torchvision.transforms.v2  as F
 from torchviz import make_dot
 import tqdm
@@ -25,8 +25,10 @@ UNFREEZE_SCHEDULE = [
     ["Mixed_7a", "Mixed_7b", "Mixed_7c"],
 ]
 
-
-PATIENCE = 2   # epochs without improvement
+best_val_loss = float("inf")
+plateau_counter = 0
+PATIENCE = 0   # epochs without improvement
+phase = 0
 
 CROSS_VAL = True
 CV_FOLDS = [
@@ -131,33 +133,6 @@ def get_data_transforms():
     ])
 
 
-def build_optimizer(model):
-    return optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=3e-4
-    )
-
-
-def plot_computational_graph(model: torch.nn.Module, input_size: tuple, filename: str = "computational_graph"):
-    """
-    Generates and saves a plot of the computational graph of the model.
-
-    Args:
-        model (torch.nn.Module): The PyTorch model to visualize.
-        input_size (tuple): The size of the dummy input tensor (e.g., (batch_size, input_dim)).
-        filename (str): Name of the file to save the graph image.
-    """
-    model.eval()  # Set the model to evaluation mode
-    
-    # Generate a dummy input based on the specified input size
-    dummy_input = torch.randn(*input_size)
-
-    # Create a graph from the model
-    graph = make_dot(model(dummy_input), params=dict(model.named_parameters()), show_attrs=True).render(filename, format="png")
-
-    print(f"Computational graph saved as {filename}")
-
-
 def get_dataloaders(train_root, test_root, batch_size=16):
     transformation = F.Compose([
         F.ToImage(),
@@ -188,71 +163,39 @@ def get_dataloaders(train_root, test_root, batch_size=16):
 
 
 def run_training(train_loader, val_loader, fold_id=None):
-    best_val_loss = float("inf")
-    plateau_counter = 0
-    phase = 0
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = WraperModel(
         num_classes=8,
-        pretrained=True
+        pretrained=False
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = build_optimizer(model)
+    optimizer = optim.Adam(model.parameters(), lr=3e-4)
 
     train_losses, train_accuracies = [], []
     val_losses, val_accuracies = [], []
 
     for epoch in tqdm.tqdm(range(num_epochs), desc=f"Fold {fold_id} Training"):
-        train_loss, train_accuracy = train(model, train_loader, criterion, optimizer, device)
-        val_loss, val_accuracy = test(model, val_loader, criterion, device)
+        train_loss, train_acc = train(model, train_loader, criterion, optimizer, device)
+        val_loss, val_acc = test(model, val_loader, criterion, device)
 
         train_losses.append(train_loss)
-        train_accuracies.append(train_accuracy)
+        train_accuracies.append(train_acc)
         val_losses.append(val_loss)
-        val_accuracies.append(val_accuracy)
+        val_accuracies.append(val_acc)
 
         print(f"Epoch {epoch + 1}/{num_epochs} - "
-              f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}, "
-              f"Test Loss: {val_loss:.4f}, Test Accuracy: {val_accuracy:.4f}")
+              f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}, "
+              f"Test Loss: {val_loss:.4f}, Test Accuracy: {val_acc:.4f}")
         
-        # ---- Plateau detection ----
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            plateau_counter = 0
-        else:
-            plateau_counter += 1
-
-        # ---- Progressive unfreezing ----
-        if plateau_counter >= PATIENCE and phase < len(UNFREEZE_SCHEDULE):
-            print(f"\n🔓 Unfreezing blocks: {UNFREEZE_SCHEDULE[phase]}\n")
-
-            model.unfreeze_blocks(UNFREEZE_SCHEDULE[phase])
-            optimizer = build_optimizer(model)  # REBUILD optimizer
-
-            wandb.log({
-                "unfreeze/epoch": epoch,
-                "unfreeze/phase": phase,
-                "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase]),
-            })
-
-            # Optional but VERY useful
-            wandb.log({
-                "unfreeze/blocks": ", ".join(UNFREEZE_SCHEDULE[phase])
-            })
-
-            phase += 1
-            plateau_counter = 0
-
 
         wandb.log({
             "epoch": epoch,
             "train/loss": train_loss,
-            "train/accuracy": train_accuracy,
+            "train/accuracy": train_acc,
             "val/loss": val_loss,
-            "val/accuracy": val_accuracy,
+            "val/accuracy": val_acc,
         })
 
     return {
@@ -264,12 +207,33 @@ def run_training(train_loader, val_loader, fold_id=None):
         "final_val_loss": val_losses[-1]
     }
 
- 
+
+def plot_computational_graph(model: torch.nn.Module, input_size: tuple, filename: str = "computational_graph"):
+    """
+    Generates and saves a plot of the computational graph of the model.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model to visualize.
+        input_size (tuple): The size of the dummy input tensor (e.g., (batch_size, input_dim)).
+        filename (str): Name of the file to save the graph image.
+    """
+    model.eval()  # Set the model to evaluation mode
+    
+    # Generate a dummy input based on the specified input size
+    dummy_input = torch.randn(*input_size)
+
+    # Create a graph from the model
+    graph = make_dot(model(dummy_input), params=dict(model.named_parameters()), show_attrs=True).render(filename, format="png")
+
+    print(f"Computational graph saved as {filename}")
+
+
+
 
 if __name__ == "__main__":
 
     torch.manual_seed(42)
-    num_epochs = 100
+    num_epochs = 60
 
     if CROSS_VAL:
         all_fold_results = []
@@ -284,7 +248,7 @@ if __name__ == "__main__":
             )
 
             wandb.init(
-                project="inceptionv3-crossval-finetuning",
+                project="inceptionv3-crossval",
                 name=f"inceptionv3-fold-{fold_idx}",
                 config={
                     "architecture": "InceptionV3",
@@ -292,11 +256,9 @@ if __name__ == "__main__":
                     "batch_size": 16,
                     "optimizer": "Adam",
                     "lr": 3e-4,
-                    "patience": PATIENCE,
-                    "unfreeze_schedule": UNFREEZE_SCHEDULE,
                     "epochs": num_epochs,
                     "fold": fold_idx,
-                    "pretrained": True,
+                    "pretrained": False,
                 },
                 reinit=True
             )
@@ -328,17 +290,15 @@ if __name__ == "__main__":
 
         wandb.init(
             project="inceptionv3-progressive-finetuning",
-            name="inceptionv3-mit-progressive-unfreeze",
+            name="inceptionv3-mit-from-scratch",
             config={
                     "architecture": "InceptionV3",
                     "num_classes": 8,
                     "batch_size": 16,
                     "optimizer": "Adam",
                     "lr": 3e-4,
-                    "patience": PATIENCE,
-                    "unfreeze_schedule": UNFREEZE_SCHEDULE,
                     "epochs": num_epochs,
-                    "pretrained": True,
+                    "pretrained": False,
                 },
         )
 

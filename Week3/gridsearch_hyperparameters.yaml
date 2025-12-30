@@ -1,0 +1,29 @@
+program: Week3/main_from_scratch_gridsearch.py
+
+method: bayes
+
+metric:
+  name: val/accuracy
+  goal: maximize
+
+parameters:
+  head_depth:
+    values: ["linear", "mlp"]
+
+  use_batchnorm:
+    values: [true, false]
+
+  hidden_dim:
+    values: [256, 512, 1024]
+
+  dropout:
+    values: [0.0, 0.2, 0.5]
+
+  lr:
+    values: [1e-4, 3e-4, 9e-4]
+
+  batch_size:
+    values: [16, 32, 64]
+
+  input_size:           
+    values: [224, 299, 350]

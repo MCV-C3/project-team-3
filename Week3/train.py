@@ -6,7 +6,7 @@ import torch
 import wandb
 import yaml
 from dataset import C3Dataset
-from models import WraperModel
+from Week3.utils import WraperModel
 from torch.nn import CrossEntropyLoss
 from torch.optim import Adagrad, Adam, AdamW, Optimizer, RMSprop
 from torch.utils.data import DataLoader
