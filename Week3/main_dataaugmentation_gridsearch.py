@@ -1,4 +1,3 @@
-from logging import config
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
@@ -10,12 +9,15 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from utils_gridsearch import SimpleModel, WraperModel
+from utils import SimpleModel, WraperModel
 import torchvision.transforms.v2  as F
 from torchviz import make_dot
 import tqdm
 import wandb
-from torchvision.transforms import ColorJitter
+from torchvision.transforms import RandomRotation, ColorJitter, RandomGrayscale
+
+
+from torchvision.transforms import Compose, ToTensor, Normalize, RandomHorizontalFlip, RandomResizedCrop
 
 
 UNFREEZE_SCHEDULE = [
@@ -123,20 +125,35 @@ def plot_metrics(train_metrics: Dict, test_metrics: Dict, metric_name: str):
 
 
 
-def get_dataloaders(train_root, test_root, batch_size=16, input_size=224):
-    
-    # Best data augmentation configuration
-    train_transformation = F.Compose([
+def build_train_transform(config, input_size):
+    transforms = [
         F.ToImage(),
         F.Resize((input_size, input_size)),
-        F.RandomHorizontalFlip(p=0.5),
-        F.RandomRotation(degrees=10),
-        ColorJitter(
+    ]
+
+    if config.random_crop:
+        transforms.append(F.RandomResizedCrop(size=input_size, scale=(0.8, 1.0)))
+
+    if config.hflip:
+        transforms.append(F.RandomHorizontalFlip(p=0.5))
+
+    if config.rotation_deg > 0:
+        transforms.append(F.RandomRotation(degrees=config.rotation_deg))
+
+    if config.color_jitter:
+        transforms.append(
+            ColorJitter(
                 brightness=0.2,
                 contrast=0.2,
                 saturation=0.2,
                 hue=0.1
-            ),
+            )
+        )
+
+    if config.grayscale:
+        transforms.append(RandomGrayscale(p=0.2))
+
+    transforms.extend([
         F.ToDtype(torch.float32, scale=True),
         F.Normalize(
             mean=[0.485, 0.456, 0.406],
@@ -144,7 +161,12 @@ def get_dataloaders(train_root, test_root, batch_size=16, input_size=224):
         ),
     ])
 
-    val_transformation = F.Compose([
+    return F.Compose(transforms)
+
+
+def build_val_transform(input_size):
+    
+    return F.Compose([
         F.ToImage(),
         F.Resize((input_size, input_size)),
         F.ToDtype(torch.float32, scale=True),
@@ -154,8 +176,22 @@ def get_dataloaders(train_root, test_root, batch_size=16, input_size=224):
         ),
     ])
 
-    train_dataset = ImageFolder(os.path.join(train_root, "train"), transform=train_transformation)
-    test_dataset  = ImageFolder(os.path.join(test_root, "test"), transform=val_transformation)
+
+
+def get_dataloaders(train_root, test_root, config, batch_size=16, input_size=224):
+
+    train_transform = build_train_transform(config, input_size)
+    val_transform   = build_val_transform(input_size)
+
+    train_dataset = ImageFolder(
+        os.path.join(train_root, "train"),
+        transform=train_transform
+    )
+
+    test_dataset = ImageFolder(
+        os.path.join(test_root, "test"),
+        transform=val_transform
+    )
 
     train_loader = DataLoader(
         train_dataset,
@@ -182,10 +218,6 @@ def run_training(train_loader, val_loader, config, fold_id=None):
     model = WraperModel(
         num_classes=8,
         pretrained=False,
-        head_depth=config.head_depth,
-        hidden_dim=config.hidden_dim,
-        dropout=config.dropout,
-        use_batchnorm=config.use_batchnorm,
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -238,6 +270,7 @@ def sweep_train():
     train_loader, val_loader = get_dataloaders(
         train_root=fold_path,
         test_root=fold_path,
+        config=config,
         batch_size=config.batch_size,
         input_size=config.input_size
     )

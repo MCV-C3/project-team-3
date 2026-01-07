@@ -1,0 +1,31 @@
+program: Week3/main_dataaugmentation_gridsearch.py
+
+method: grid
+metric:
+  name: val/accuracy
+  goal: maximize
+
+parameters:
+  batch_size:
+    values: [16]
+
+  input_size:
+    values: [224]
+
+  random_crop:
+    values: [true, false]
+
+  hflip:
+    values: [true, false]
+
+  rotation_deg:
+    values: [0, 10, 20]
+
+  color_jitter:
+    values: [true, false]
+
+  grayscale:
+    values: [false, true]
+
+  lr:
+    values: [3e-4]

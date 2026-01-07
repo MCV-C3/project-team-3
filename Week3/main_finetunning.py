@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from Week3.utils import SimpleModel, WraperModel
+from utils import SimpleModel, WraperModel
 import torchvision.transforms.v2  as F
 from torchviz import make_dot
 import tqdm
@@ -26,9 +26,9 @@ UNFREEZE_SCHEDULE = [
 ]
 
 
-PATIENCE = 2   # epochs without improvement
+PATIENCE = 4   # epochs without improvement
 
-CROSS_VAL = True
+CROSS_VAL = False
 CV_FOLDS = [
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_1",
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_2",
@@ -134,7 +134,7 @@ def get_data_transforms():
 def build_optimizer(model):
     return optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr=3e-4
+        lr=1e-4
     )
 
 
@@ -233,7 +233,9 @@ def run_training(train_loader, val_loader, fold_id=None):
             optimizer = build_optimizer(model)  # REBUILD optimizer
 
             wandb.log({
-                "unfreeze/epoch": epoch,
+                "epoch": epoch,
+                "unfreeze/epoch_loss": 2,
+                "unfreeze/epoch_accuracy": 1,
                 "unfreeze/phase": phase,
                 "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase]),
             })
@@ -245,6 +247,23 @@ def run_training(train_loader, val_loader, fold_id=None):
 
             phase += 1
             plateau_counter = 0
+        else:
+            if phase < len(UNFREEZE_SCHEDULE):
+                wandb.log({
+                    "epoch": epoch,
+                    "unfreeze/epoch_loss": 0,
+                    "unfreeze/epoch_accuracy": 0,
+                    "unfreeze/phase": phase,
+                    "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase]),
+                })
+            else:
+                wandb.log({
+                    "epoch": epoch,
+                    "unfreeze/epoch_loss": 0,
+                    "unfreeze/epoch_accuracy": 0,
+                    "unfreeze/phase": phase,
+                    "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase-1]),
+                })
 
 
         wandb.log({
@@ -291,7 +310,7 @@ if __name__ == "__main__":
                     "num_classes": 8,
                     "batch_size": 16,
                     "optimizer": "Adam",
-                    "lr": 3e-4,
+                    "lr": 1e-4,
                     "patience": PATIENCE,
                     "unfreeze_schedule": UNFREEZE_SCHEDULE,
                     "epochs": num_epochs,
@@ -328,13 +347,13 @@ if __name__ == "__main__":
 
         wandb.init(
             project="inceptionv3-progressive-finetuning",
-            name="inceptionv3-mit-progressive-unfreeze",
+            name="inceptionv3-mit-progressive-unfreeze_better",
             config={
                     "architecture": "InceptionV3",
                     "num_classes": 8,
                     "batch_size": 16,
                     "optimizer": "Adam",
-                    "lr": 3e-4,
+                    "lr": 1e-4,
                     "patience": PATIENCE,
                     "unfreeze_schedule": UNFREEZE_SCHEDULE,
                     "epochs": num_epochs,
