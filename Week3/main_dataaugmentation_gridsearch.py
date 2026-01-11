@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 from typing import *
 from torch.utils.data import DataLoader
@@ -26,12 +26,10 @@ UNFREEZE_SCHEDULE = [
     ["Mixed_7a", "Mixed_7b", "Mixed_7c"],
 ]
 
-best_val_loss = float("inf")
-plateau_counter = 0
-PATIENCE = 0   # epochs without improvement
-phase = 0
 
-CROSS_VAL = True
+PATIENCE = 4   # epochs without improvement
+
+CROSS_VAL = False
 CV_FOLDS = [
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_1",
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_2",
@@ -211,17 +209,27 @@ def get_dataloaders(train_root, test_root, config, batch_size=16, input_size=224
 
     return train_loader, test_loader
 
+def build_optimizer(model, lr):
+    return optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr
+    )
+
 
 def run_training(train_loader, val_loader, config, fold_id=None):
+    best_val_loss = float("inf")
+    plateau_counter = 0
+    phase = 0
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = WraperModel(
         num_classes=8,
-        pretrained=False,
+        pretrained=True,
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=config.lr)
+    optimizer = build_optimizer(model, lr=config.lr)
 
     train_losses, train_accuracies = [], []
     val_losses, val_accuracies = [], []
@@ -238,6 +246,54 @@ def run_training(train_loader, val_loader, config, fold_id=None):
         print(f"Epoch {epoch + 1}/{NUM_EPOCHS} - "
               f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}, "
               f"Test Loss: {val_loss:.4f}, Test Accuracy: {val_acc:.4f}")
+        
+
+        # ---- Plateau detection ----
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            plateau_counter = 0
+        else:
+            plateau_counter += 1
+
+        # ---- Progressive unfreezing ----
+        if plateau_counter >= PATIENCE and phase < len(UNFREEZE_SCHEDULE):
+            print(f"\n🔓 Unfreezing blocks: {UNFREEZE_SCHEDULE[phase]}\n")
+
+            model.unfreeze_blocks(UNFREEZE_SCHEDULE[phase])
+            optimizer = build_optimizer(model, lr=config.lr)  # REBUILD optimizer
+
+            wandb.log({
+                "epoch": epoch,
+                "unfreeze/epoch_loss": 2,
+                "unfreeze/epoch_accuracy": 1,
+                "unfreeze/phase": phase,
+                "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase]),
+            })
+
+            # Optional but VERY useful
+            wandb.log({
+                "unfreeze/blocks": ", ".join(UNFREEZE_SCHEDULE[phase])
+            })
+
+            phase += 1
+            plateau_counter = 0
+        else:
+            if phase < len(UNFREEZE_SCHEDULE):
+                wandb.log({
+                    "epoch": epoch,
+                    "unfreeze/epoch_loss": 0,
+                    "unfreeze/epoch_accuracy": 0,
+                    "unfreeze/phase": phase,
+                    "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase]),
+                })
+            else:
+                wandb.log({
+                    "epoch": epoch,
+                    "unfreeze/epoch_loss": 0,
+                    "unfreeze/epoch_accuracy": 0,
+                    "unfreeze/phase": phase,
+                    "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase-1]),
+                })
         
 
         wandb.log({

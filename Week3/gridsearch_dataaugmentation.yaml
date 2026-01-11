@@ -1,6 +1,7 @@
 program: Week3/main_dataaugmentation_gridsearch.py
 
-method: grid
+method: random
+count: 14
 metric:
   name: val/accuracy
   goal: maximize

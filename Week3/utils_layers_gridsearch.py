@@ -47,50 +47,96 @@ class SimpleModel(nn.Module):
     
 
 class WraperModel(nn.Module):
-    def __init__(self, num_classes, pretrained=False):
+    def __init__(
+        self,
+        num_classes: int,
+        pretrained: bool = True,
+        remove_blocks: list[str] = None,
+        extra_conv_blocks: int = 0,
+        classifier_depth: int = 1,
+        hidden_dim: int = 512,
+    ):
         super().__init__()
 
-        # Load pretrained InceptionV3 model
+        remove_blocks = remove_blocks or []
+
         self.backbone = models.inception_v3(
             weights=None if not pretrained else "IMAGENET1K_V1",
             aux_logits=True
         )
 
-        # Disable auxiliary classifier safely
-        self.backbone.AuxLogits = None
-
         if pretrained:
             self.set_parameter_requires_grad(feature_extracting=pretrained)
 
-        hidden_dim = 512
-        use_batchnorm = False
-        dropout = 0.5
-        # ----- Classifier head -----
-        layers = []
+        # Disable auxiliary classifier safely
+        self.backbone.AuxLogits = None
 
-        layers.append(nn.Linear(self.backbone.fc.in_features, hidden_dim))
+        # ---- Disable unwanted blocks ----
+        for block_name in remove_blocks:
+            if hasattr(self.backbone, block_name):
+                setattr(self.backbone, block_name, nn.Identity())
 
-        if use_batchnorm:
-            layers.append(nn.BatchNorm1d(hidden_dim))
+        # ---- Backbone output size ----
+        backbone_out = 2048
 
-        layers.append(nn.ReLU())
+        # ---- Optional extra conv blocks ----
+        convs = []
+        for _ in range(extra_conv_blocks):
+            convs.append(nn.Conv2d(backbone_out, backbone_out, 3, padding=1))
+            convs.append(nn.BatchNorm2d(backbone_out))
+            convs.append(nn.ReLU(inplace=True))
 
-        if dropout > 0:
-            layers.append(nn.Dropout(dropout))
+        self.extra_conv = nn.Sequential(*convs) if convs else nn.Identity()
 
-        layers.append(nn.Linear(hidden_dim, num_classes))
-        
-        self.backbone.fc = nn.Sequential(*layers)
+        # ---- Adaptive pooling ----
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
 
+        # ---- Classifier ----
+        clf = []
+        in_dim = backbone_out
+
+        for _ in range(classifier_depth - 1):
+            clf.append(nn.Linear(in_dim, hidden_dim))
+            clf.append(nn.ReLU(inplace=True))
+            clf.append(nn.Dropout(0.5))
+            in_dim = hidden_dim
+
+        clf.append(nn.Linear(in_dim, num_classes))
+        self.classifier = nn.Sequential(*clf)
 
     def forward(self, x):
-        outputs = self.backbone(x)
+        x = self.backbone.Conv2d_1a_3x3(x)
+        x = self.backbone.Conv2d_2a_3x3(x)
+        x = self.backbone.Conv2d_2b_3x3(x)
+        x = self.backbone.maxpool1(x)
 
-        # In training mode, Inception returns InceptionOutputs
-        if isinstance(outputs, tuple) or hasattr(outputs, "logits"):
-            return outputs.logits
+        x = self.backbone.Conv2d_3b_1x1(x)
+        x = self.backbone.Conv2d_4a_3x3(x)
+        x = self.backbone.maxpool2(x)
 
-        return outputs
+        x = self.backbone.Mixed_5b(x)
+        x = self.backbone.Mixed_5c(x)
+        x = self.backbone.Mixed_5d(x)
+
+        x = self.backbone.Mixed_6a(x)
+        x = self.backbone.Mixed_6b(x)
+        x = self.backbone.Mixed_6c(x)
+        x = self.backbone.Mixed_6d(x)
+        x = self.backbone.Mixed_6e(x)
+
+        if not isinstance(self.backbone.Mixed_7a, nn.Identity):
+            x = self.backbone.Mixed_7a(x)
+        if not isinstance(self.backbone.Mixed_7b, nn.Identity):
+            x = self.backbone.Mixed_7b(x)
+        if not isinstance(self.backbone.Mixed_7c, nn.Identity):
+            x = self.backbone.Mixed_7c(x)
+
+        x = self.extra_conv(x)
+        x = self.pool(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+
+        return x
     
 
     def extract_feature_maps(self, input_image:torch.Tensor):

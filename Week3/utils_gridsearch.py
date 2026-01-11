@@ -66,6 +66,9 @@ class WraperModel(nn.Module):
         # Disable auxiliary classifier safely
         self.backbone.AuxLogits = None
 
+        if pretrained:
+            self.set_parameter_requires_grad(feature_extracting=pretrained)
+
         in_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Identity()
 

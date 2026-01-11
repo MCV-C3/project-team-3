@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 
 from typing import *
 from torch.utils.data import DataLoader
@@ -9,14 +9,14 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import SimpleModel, WraperModel
+from utils_layers_gridsearch import SimpleModel, WraperModel
 import torchvision.transforms.v2  as F
 from torchviz import make_dot
 import tqdm
 import wandb
 
 
-from torchvision.transforms import Compose, ToTensor, Normalize, RandomHorizontalFlip, RandomResizedCrop, ColorJitter
+from torchvision.transforms import Compose, ToTensor, Normalize, RandomHorizontalFlip, RandomResizedCrop
 
 
 UNFREEZE_SCHEDULE = [
@@ -28,12 +28,12 @@ UNFREEZE_SCHEDULE = [
 
 PATIENCE = 4   # epochs without improvement
 
-CROSS_VAL = True
+CROSS_VAL = False
 CV_FOLDS = [
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_1",
-    #"/data2/users/gasbert/master/C3/2425/MIT_small_train_2",
-    #"/data2/users/gasbert/master/C3/2425/MIT_small_train_3",
-    #"/data2/users/gasbert/master/C3/2425/MIT_small_train_4",
+    "/data2/users/gasbert/master/C3/2425/MIT_small_train_2",
+    "/data2/users/gasbert/master/C3/2425/MIT_small_train_3",
+    "/data2/users/gasbert/master/C3/2425/MIT_small_train_4",
 ]
 
 
@@ -159,38 +159,14 @@ def plot_computational_graph(model: torch.nn.Module, input_size: tuple, filename
 
 
 def get_dataloaders(train_root, test_root, batch_size=16):
-    # Best data augmentation configuration
-    train_transformation = F.Compose([
+    transformation = F.Compose([
         F.ToImage(),
-        F.Resize((224, 224)),
-        F.RandomHorizontalFlip(p=0.5),
-        F.RandomRotation(degrees=10),
-        ColorJitter(
-                brightness=0.2,
-                contrast=0.2,
-                saturation=0.2,
-                hue=0.1
-            ),
         F.ToDtype(torch.float32, scale=True),
-        F.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        ),
+        F.Resize(size=(224, 224)),
     ])
 
-    val_transformation = F.Compose([
-        F.ToImage(),
-        F.Resize((224, 224)),
-        F.ToDtype(torch.float32, scale=True),
-        F.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        ),
-    ])
-
-
-    train_dataset = ImageFolder(os.path.join(train_root, "train"), transform=train_transformation)
-    test_dataset  = ImageFolder(os.path.join(test_root, "test"), transform=val_transformation)
+    train_dataset = ImageFolder(os.path.join(train_root, "train"), transform=transformation)
+    test_dataset  = ImageFolder(os.path.join(test_root, "test"), transform=transformation)
 
     train_loader = DataLoader(
         train_dataset,
@@ -220,7 +196,11 @@ def run_training(train_loader, val_loader, fold_id=None):
 
     model = WraperModel(
         num_classes=8,
-        pretrained=True
+        pretrained=True,
+        remove_blocks=wandb.config.remove_blocks,
+        extra_conv_blocks=wandb.config.extra_conv_blocks,
+        classifier_depth=wandb.config.classifier_depth,
+        hidden_dim=512
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -327,7 +307,7 @@ if __name__ == "__main__":
             )
 
             wandb.init(
-                project="inceptionv3-finetuning-dropout",
+                project="inceptionv3-crossval-finetuning",
                 name=f"inceptionv3-fold-{fold_idx}",
                 config={
                     "architecture": "InceptionV3",

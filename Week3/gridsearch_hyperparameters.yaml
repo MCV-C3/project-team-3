@@ -1,6 +1,6 @@
 program: Week3/main_from_scratch_gridsearch.py
 
-method: bayes
+method: grid
 
 metric:
   name: val/accuracy
@@ -8,22 +8,25 @@ metric:
 
 parameters:
   head_depth:
-    values: ["linear", "mlp"]
+    values: ["mlp"]
 
   use_batchnorm:
-    values: [true, false]
+    values: [true]
 
   hidden_dim:
-    values: [256, 512, 1024]
+    values: [256]
 
   dropout:
-    values: [0.0, 0.2, 0.5]
+    values: [0.2]
 
   lr:
-    values: [1e-4, 3e-4, 9e-4]
+    values: [3e-4]
 
   batch_size:
-    values: [16, 32, 64]
+    values: [64]
 
   input_size:           
-    values: [224, 299, 350]
+    values: [350]
+
+  patience:
+    values: [2]

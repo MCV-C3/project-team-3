@@ -551,9 +551,9 @@ if __name__ == "__main__":
         F.Resize(size=(64, 64)),
     ])
     
-    data_train = ImageFolder("/data2/users/gasbert/master/C3/places_reduced/train", 
+    data_train = ImageFolder("/data2/users/gasbert/master/C3/2425/MIT_small_train_1/train", 
                             transform=transformation_t)
-    data_test = ImageFolder("/data2/users/gasbert/master/C3/places_reduced/val", 
+    data_test = ImageFolder("/data2/users/gasbert/master/C3/2425/MIT_small_train_1/test", 
                            transform=transformation) 
 
     train_loader = DataLoader(data_train, batch_size=256, pin_memory=True, 

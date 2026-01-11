@@ -1,6 +1,6 @@
 from logging import config
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 from typing import *
 from torch.utils.data import DataLoader
@@ -16,6 +16,8 @@ from torchviz import make_dot
 import tqdm
 import wandb
 from torchvision.transforms import ColorJitter
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from pytorch_grad_cam.utils.image import show_cam_on_image
 
 
 UNFREEZE_SCHEDULE = [
@@ -24,18 +26,14 @@ UNFREEZE_SCHEDULE = [
     ["Mixed_7a", "Mixed_7b", "Mixed_7c"],
 ]
 
-best_val_loss = float("inf")
-plateau_counter = 0
-PATIENCE = 0   # epochs without improvement
-phase = 0
-
-CROSS_VAL = True
+CROSS_VAL = False
 CV_FOLDS = [
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_1",
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_2",
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_3",
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_4",
 ]
+
 
 NUM_EPOCHS = 60
 
@@ -176,12 +174,86 @@ def get_dataloaders(train_root, test_root, batch_size=16, input_size=224):
     return train_loader, test_loader
 
 
+def build_optimizer(model, lr):
+    return optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr
+    )
+
+
+def save_gradcam_for_loader(
+    model,
+    dataloader,
+    device,
+    epoch,
+    save_root="gradcam_outputs",
+    target_layer_name="Mixed_7c",
+    hook_layer_name="Mixed_7c",
+):
+    """
+    Generates and saves:
+    1) Grad-CAM visualization
+    2) Hook-based feature map (min over channels)
+    for ALL images in a dataloader.
+    """
+
+    model.eval()
+    os.makedirs(save_root, exist_ok=True)
+
+    # ---- Grad-CAM target layer ----
+    target_layer = dict(model.backbone.named_children())[target_layer_name]
+
+    for batch_idx, (inputs, labels) in enumerate(dataloader):
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+        for i in range(inputs.size(0)):
+            input_tensor = inputs[i].unsqueeze(0)
+            label = labels[i].item()
+
+            # ======================================================
+            # 1️⃣ GRAD-CAM
+            # ======================================================
+            input_tensor.requires_grad_(True)
+
+            targets = [ClassifierOutputTarget(label)]
+
+            grad_cam = model.extract_grad_cam(
+                input_image=input_tensor,
+                target_layer=[target_layer],
+                targets=targets
+            )
+
+            # De-normalize image for visualization
+            img = inputs[i].detach().cpu().numpy().transpose(1, 2, 0)
+            img = (img - img.min()) / (img.max() - img.min() + 1e-8)
+
+            cam_vis = show_cam_on_image(img, grad_cam, use_rgb=True)
+
+            # Get original image name
+            dataset = dataloader.dataset
+            img_path, class_idx = dataset.samples[batch_idx * dataloader.batch_size + i]
+            img_name = os.path.splitext(os.path.basename(img_path))[0]
+            class_name = dataset.classes[class_idx]
+
+            cam_path = os.path.join(
+                save_root,
+                f"class_{img_name}_image_{img_name}_epoch_{epoch}.png"
+            )
+            plt.imsave(cam_path, cam_vis)
+
+
+
 def run_training(train_loader, val_loader, config, fold_id=None):
+    best_val_loss = float("inf")
+    plateau_counter = 0
+    phase = 0
+    patience = config.patience
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = WraperModel(
         num_classes=8,
-        pretrained=False,
+        pretrained=True,
         head_depth=config.head_depth,
         hidden_dim=config.hidden_dim,
         dropout=config.dropout,
@@ -189,7 +261,7 @@ def run_training(train_loader, val_loader, config, fold_id=None):
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=config.lr)
+    optimizer = build_optimizer(model, config.lr)
 
     train_losses, train_accuracies = [], []
     val_losses, val_accuracies = [], []
@@ -206,6 +278,65 @@ def run_training(train_loader, val_loader, config, fold_id=None):
         print(f"Epoch {epoch + 1}/{NUM_EPOCHS} - "
               f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}, "
               f"Test Loss: {val_loss:.4f}, Test Accuracy: {val_acc:.4f}")
+        
+
+        if (epoch + 1) % 10 == 1:
+            print(f"\n🎯 Saving Grad-CAMs at epoch {epoch + 1}\n")
+            save_gradcam_for_loader(
+                model=model,
+                dataloader=train_loader,
+                device=device,
+                epoch=epoch + 1,
+                save_root="gradcam_outputs",
+                target_layer_name="Mixed_7c",
+            )
+        
+        # ---- Plateau detection ----
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            plateau_counter = 0
+        else:
+            plateau_counter += 1
+
+        # ---- Progressive unfreezing ----
+        if plateau_counter >= patience and phase < len(UNFREEZE_SCHEDULE):
+            print(f"\n🔓 Unfreezing blocks: {UNFREEZE_SCHEDULE[phase]}\n")
+
+            model.unfreeze_blocks(UNFREEZE_SCHEDULE[phase])
+            optimizer = build_optimizer(model, config.lr)  # REBUILD optimizer
+
+            wandb.log({
+                "epoch": epoch,
+                "unfreeze/epoch_loss": 2,
+                "unfreeze/epoch_accuracy": 1,
+                "unfreeze/phase": phase,
+                "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase]),
+            })
+
+            # Optional but VERY useful
+            wandb.log({
+                "unfreeze/blocks": ", ".join(UNFREEZE_SCHEDULE[phase])
+            })
+
+            phase += 1
+            plateau_counter = 0
+        else:
+            if phase < len(UNFREEZE_SCHEDULE):
+                wandb.log({
+                    "epoch": epoch,
+                    "unfreeze/epoch_loss": 0,
+                    "unfreeze/epoch_accuracy": 0,
+                    "unfreeze/phase": phase,
+                    "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase]),
+                })
+            else:
+                wandb.log({
+                    "epoch": epoch,
+                    "unfreeze/epoch_loss": 0,
+                    "unfreeze/epoch_accuracy": 0,
+                    "unfreeze/phase": phase,
+                    "unfreeze/num_blocks": len(UNFREEZE_SCHEDULE[phase-1]),
+                })
         
 
         wandb.log({
