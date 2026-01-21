@@ -212,6 +212,12 @@ def get_dataloaders(train_root, test_root, batch_size=16):
 
 
 def run_training(train_loader, val_loader, fold_id=None):
+
+    best_val_acc = 0.0
+    best_epoch = -1
+    save_dir = "checkpoints"
+    os.makedirs(save_dir, exist_ok=True)
+
     best_val_loss = float("inf")
     plateau_counter = 0
     phase = 0
@@ -232,6 +238,33 @@ def run_training(train_loader, val_loader, fold_id=None):
     for epoch in tqdm.tqdm(range(num_epochs), desc=f"Fold {fold_id} Training"):
         train_loss, train_accuracy = train(model, train_loader, criterion, optimizer, device)
         val_loss, val_accuracy = test(model, val_loader, criterion, device)
+
+        # ---- Save best model by validation accuracy ----
+        if val_accuracy > best_val_acc:
+            best_val_acc = val_accuracy
+            best_epoch = epoch
+
+            checkpoint = {
+                "epoch": epoch,
+                "val_accuracy": val_accuracy,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "num_classes": 8,
+                "architecture": "InceptionV3",
+                "classifier_head": model.backbone.fc,
+            }
+
+            torch.save(
+                checkpoint,
+                os.path.join(save_dir, f"best_model_fold_{fold_id}.pth")
+            )
+
+            print(f"💾 Saved best model (epoch {epoch}, val acc {val_accuracy:.4f})")
+
+            wandb.log({
+                "best/val_accuracy": val_accuracy,
+                "best/epoch": epoch
+            })
 
         train_losses.append(train_loss)
         train_accuracies.append(train_accuracy)
