@@ -201,7 +201,7 @@ class WraperModel(nn.Module):
 
 
 
-
+'''
 # Example of usage
 if __name__ == "__main__":
     torch.manual_seed(42)
@@ -299,3 +299,4 @@ if __name__ == "__main__":
     ## Draw the model
     model_graph = draw_graph(model, input_size=(1, 3, 224, 224), device='meta', expand_nested=True, roll=True)
     model_graph.visual_graph.render(filename="test", format="png", directory="./Week3")
+'''

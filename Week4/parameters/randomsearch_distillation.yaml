@@ -1,0 +1,31 @@
+program: Week4/train_distill_sweep.py
+
+method: random
+
+metric:
+  name: best/val_accuracy
+  goal: maximize
+
+parameters:
+  kd_alpha:
+    distribution: uniform
+    min: 0.1
+    max: 0.9
+
+  kd_temperature:
+    distribution: log_uniform_values
+    min: 1.0
+    max: 30.0
+
+command:
+  - env
+  - CUDA_VISIBLE_DEVICES=6,7
+  - python
+  - train.py
+  - --epochs
+  - "100"
+  - --multi-gpu
+  - --data-dir
+  - /data2/users/gasbert/master/C3/2425/MIT_small_train_2
+  - --distill
+  - --finetuned_teacher

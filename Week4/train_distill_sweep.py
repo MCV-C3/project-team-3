@@ -386,11 +386,11 @@ def get_curated_config():
         return channels
 
     config = {
-        'name': 'baseline_relu_bn',
+        'name': 'baseline_relu_ln',
         'num_conv_layers': 5,
         'channels': get_channels(BASE_CHANNELS, 5),
         'activation': 'relu',
-        'normalization': 'batchnorm',
+        'normalization': 'layernorm',
         'component_order': 'conv_norm_act',
         'use_residual': False,
         'use_attention': False,
@@ -491,12 +491,34 @@ def main():
     model = model.to(device)
     num_params = model.module.get_num_parameters() if isinstance(model, nn.DataParallel) else model.get_num_parameters()
 
-    
+    print("\nEvaluating teacher model on validation set...")
+    teacher_model.eval()
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = teacher_model(images)
+            preds = outputs.argmax(dim=1)
+            print("PREDS")
+            print(preds[:20])
+            print("LABELS")
+            print(labels[:20])
+            correct += (preds == labels).sum().item()
+            total += labels.size(0)
+
+    print("Teacher val acc:", 100 * correct / total)
+
+
+
+
+
     wandb.init(
         project="scene-classification",   # change if you want
-        name=f"SE_R4_6Batch{'_KD' if args.distill else ''}",
+        name=f"SE_R4_6Layer{'_KD' if args.distill else ''}",
         config={
-            "model": "SE_R4_6Batch",
+            "model": "SE_R4_6Layer",
             "num_parameters": num_params,
             "dataset": "MIT_split",
             "image_size": IMAGE_SIZE,
@@ -507,8 +529,6 @@ def main():
             "optimizer": "Adam",
             "seed": SEED,
             "distillation": args.distill,
-            "kd_alpha": args.kd_alpha if args.distill else None,
-            "kd_temperature": args.kd_temperature if args.distill else None,
             "teacher_model": "InceptionV3" if args.distill else None,
             "finetuned_teacher": args.finetuned_teacher if args.distill else None,
         }
@@ -519,6 +539,14 @@ def main():
         log="gradients",
         log_freq=100
     )
+
+    if args.distill:
+        kd_alpha = wandb.config.kd_alpha
+        kd_temperature = wandb.config.kd_temperature
+        print(f"Using KD alpha: {kd_alpha}, temperature: {kd_temperature}")
+    else:
+        kd_alpha = None
+        kd_temperature = None
     
     # Print model summary
     print_model_summary(model.module if isinstance(model, nn.DataParallel) else model)
@@ -553,8 +581,8 @@ def main():
         # Train
         train_loss, train_acc = train_epoch(model, teacher_model, train_loader, optimizer, device,
                                            distill=args.distill,
-                                           alpha=args.kd_alpha,
-                                           temperature=args.kd_temperature)
+                                           alpha=kd_alpha,
+                                           temperature=kd_temperature)
         
         # Validate
         val_loss, val_acc = validate(model, val_loader, criterion, device)
@@ -625,10 +653,6 @@ def main():
         model.load_state_dict(checkpoint['model_state_dict'])
     
     test_loss, test_acc = validate(model, test_loader, criterion, device)
-
-    wandb.log({
-            "test/accuracy": test_acc,
-        })
     
     # Log final results
     logger.log_final(best_epoch, best_val_acc, test_acc, training_time)

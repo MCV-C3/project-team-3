@@ -154,7 +154,6 @@ def load_dataset_from_folders(data_dir, categories, train_split=0.7, val_split=0
     
     return train_paths, train_labels, val_paths, val_labels, test_paths, test_labels
 
-
 def load_presplit_dataset(data_dir, categories, val_split=0.15, seed=42):
     """
     Load dataset that already has train/test splits.

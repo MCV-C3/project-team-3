@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 
 from typing import *
 from torch.utils.data import DataLoader
@@ -14,6 +14,8 @@ import torchvision.transforms.v2  as F
 from torchviz import make_dot
 import tqdm
 import wandb
+from torchvision import transforms
+from dataset import load_presplit_dataset, create_data_loaders
 
 
 from torchvision.transforms import Compose, ToTensor, Normalize, RandomHorizontalFlip, RandomResizedCrop, ColorJitter
@@ -28,13 +30,28 @@ UNFREEZE_SCHEDULE = [
 
 PATIENCE = 4   # epochs without improvement
 
-CROSS_VAL = True
+CROSS_VAL = False
 CV_FOLDS = [
     "/data2/users/gasbert/master/C3/2425/MIT_small_train_1",
     #"/data2/users/gasbert/master/C3/2425/MIT_small_train_2",
     #"/data2/users/gasbert/master/C3/2425/MIT_small_train_3",
     #"/data2/users/gasbert/master/C3/2425/MIT_small_train_4",
 ]
+
+SCENE_CATEGORIES = ['coast', 'forest', 'highway', 'inside_city', 'mountain', 'Opencountry', 'street', 'tallbuilding']
+IMAGE_SIZE = 128
+MEAN = [0.485, 0.456, 0.406]
+STD = [0.229, 0.224, 0.225]
+
+LEARNING_RATE = 0.001
+DROPOUT = 0.2
+BASE_CHANNELS = 32
+BATCH_SIZE = 32
+EPOCHS = 30
+SEED = 42
+
+
+
 
 
 # Train function
@@ -160,32 +177,20 @@ def plot_computational_graph(model: torch.nn.Module, input_size: tuple, filename
 
 def get_dataloaders(train_root, test_root, batch_size=16):
     # Best data augmentation configuration
-    train_transformation = F.Compose([
-        F.ToImage(),
-        F.Resize((224, 224)),
-        F.RandomHorizontalFlip(p=0.5),
-        F.RandomRotation(degrees=10),
-        ColorJitter(
-                brightness=0.2,
-                contrast=0.2,
-                saturation=0.2,
-                hue=0.1
-            ),
-        F.ToDtype(torch.float32, scale=True),
-        F.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        ),
+    train_transformation = transforms.Compose([
+            transforms.Resize((IMAGE_SIZE + 32, IMAGE_SIZE + 32)),
+            transforms.RandomCrop(IMAGE_SIZE),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            transforms.RandomRotation(15),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=MEAN, std=STD),
     ])
 
-    val_transformation = F.Compose([
-        F.ToImage(),
-        F.Resize((224, 224)),
-        F.ToDtype(torch.float32, scale=True),
-        F.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        ),
+    val_transformation = transforms.Compose([
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=MEAN, std=STD),
     ])
 
 
@@ -194,7 +199,7 @@ def get_dataloaders(train_root, test_root, batch_size=16):
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=batch_size,
+        batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=8,
         pin_memory=True
@@ -211,7 +216,7 @@ def get_dataloaders(train_root, test_root, batch_size=16):
     return train_loader, test_loader
 
 
-def run_training(train_loader, val_loader, fold_id=None):
+def run_training(train_loader, val_loader, fold_id=0):
 
     best_val_acc = 0.0
     best_epoch = -1
@@ -353,10 +358,15 @@ if __name__ == "__main__":
         for fold_idx, fold_path in enumerate(CV_FOLDS, start=1):
             print(f"\n===== STARTING FOLD {fold_idx} =====")
 
-            train_loader, val_loader = get_dataloaders(
-                train_root=fold_path,
-                test_root=fold_path,
-                batch_size=16
+            # Load data
+            data_dir = fold_path
+            train_paths, train_labels, val_paths, val_labels, test_paths, test_labels = load_presplit_dataset(
+                data_dir, SCENE_CATEGORIES, seed=SEED
+            )
+
+            train_loader, val_loader, test_loader = create_data_loaders(
+                train_paths, train_labels, val_paths, val_labels, test_paths, test_labels,
+                batch_size=BATCH_SIZE, num_workers=4, image_size=IMAGE_SIZE, mean=MEAN, std=STD
             )
 
             wandb.init(
@@ -365,7 +375,7 @@ if __name__ == "__main__":
                 config={
                     "architecture": "InceptionV3",
                     "num_classes": 8,
-                    "batch_size": 16,
+                    "batch_size": BATCH_SIZE,
                     "optimizer": "Adam",
                     "lr": 1e-4,
                     "patience": PATIENCE,
@@ -395,11 +405,16 @@ if __name__ == "__main__":
         print(f"Std Validation Accuracy : {std_acc:.4f}")
 
     else:
-        # ---- Original single-split training ----
-        train_loader, val_loader = get_dataloaders(
-            "/data2/users/gasbert/master/C3/2425/MIT_large_train",
-            "/data2/users/gasbert/master/C3/2425/MIT_large_train",
-            batch_size=16
+
+        # Load data
+        data_dir = "/data2/users/gasbert/master/C3/2425/MIT_large_train"
+        train_paths, train_labels, val_paths, val_labels, test_paths, test_labels = load_presplit_dataset(
+            data_dir, SCENE_CATEGORIES, seed=SEED
+        )
+
+        train_loader, val_loader, test_loader = create_data_loaders(
+            train_paths, train_labels, val_paths, val_labels, test_paths, test_labels,
+            batch_size=BATCH_SIZE, num_workers=4, image_size=IMAGE_SIZE, mean=MEAN, std=STD
         )
 
         wandb.init(
@@ -408,7 +423,7 @@ if __name__ == "__main__":
             config={
                     "architecture": "InceptionV3",
                     "num_classes": 8,
-                    "batch_size": 16,
+                    "batch_size": BATCH_SIZE,
                     "optimizer": "Adam",
                     "lr": 1e-4,
                     "patience": PATIENCE,
