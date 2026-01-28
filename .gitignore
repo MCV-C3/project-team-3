@@ -2,6 +2,8 @@
 places_reduced
 places_reduced_reduced
 wandb
+checkpoints
+logs
 
 # Ignore cache files
 __pycache__

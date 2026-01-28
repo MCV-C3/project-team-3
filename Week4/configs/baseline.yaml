@@ -1,0 +1,27 @@
+program: train2.py
+
+method: grid
+
+metric:
+  name: best/val_accuracy
+  goal: maximize
+
+parameters:
+  depth:
+    values: [3, 4, 5]
+
+command:
+  - env
+  - CUDA_DEVICE_ORDER=PCI_BUS_ID
+  - CUDA_VISIBLE_DEVICES=1
+  - uv
+  - run
+  - ${program}
+  - --model
+  - baseline
+  - --data-dir
+  - /home/msiau/data/tmp/agarciat/MCVC/C3/2425/MIT_small_train_1
+  - --save-dir
+  - checkpoints
+  - --log-dir
+  - logs
