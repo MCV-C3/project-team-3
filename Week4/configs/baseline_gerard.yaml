@@ -13,15 +13,11 @@ parameters:
 command:
   - env
   - CUDA_DEVICE_ORDER=PCI_BUS_ID
-  - CUDA_VISIBLE_DEVICES=1
-  - uv
-  - run
+  - CUDA_VISIBLE_DEVICES=6
+  - python
   - ${program}
   - --model
   - baseline
   - --data-dir
-  - /home/msiau/data/tmp/agarciat/MCVC/C3/2425/MIT_small_train_1
-  - --save-dir
-  - checkpoints
-  - --log-dir
-  - logs
+  - /data2/users/gasbert/master/C3/2425/MIT_small_train_1
+  - --distill

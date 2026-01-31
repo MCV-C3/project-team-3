@@ -22,6 +22,7 @@ matplotlib.use('Agg')  # Non-interactive backend
 import torchvision.models as modelsTorch
 import torch.nn.functional as F
 import wandb
+import os
 
 from data.dataset2 import create_data_loaders
 from model2 import build_model
@@ -210,6 +211,7 @@ def main():
 
     model = model.to(device)
     num_params = model.module.get_num_parameters() if isinstance(model, nn.DataParallel) else model.get_num_parameters()
+    wandb.log({"num_parameters": num_params})
 
     # Knowledge Distillation Setup
     teacher_model = None
@@ -300,7 +302,16 @@ def main():
             patience = 0
             best_val_acc = val_acc
             best_epoch = epoch
+
+            # ---- Derived efficiency metrics ----
+            params_100k = num_params / 100_000
+            efficiency_ratio = val_acc / params_100k
+            distance_d = np.sqrt(
+                (params_100k ** 2) +
+                ((val_acc * 100 if val_acc <= 1 else val_acc) - 100) ** 2
+            )
             
+            os.makedirs(save_dir / args.model, exist_ok=True)
             model_state = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
             torch.save({
                 'epoch': epoch,
@@ -308,11 +319,13 @@ def main():
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_acc': val_acc,
                 'train_acc': train_acc,
-            }, save_dir / 'best_model.pth')
+            }, save_dir / args.model / 'best_model.pth')
 
             wandb.log({
                 "best/val_accuracy": best_val_acc,
                 "best/epoch": best_epoch,
+                "best/efficiency_ratio": efficiency_ratio,
+                "best/distance_d": distance_d,
             })
             
             print(f"New best model saved! (Val Acc: {val_acc:.2f}%)")
@@ -327,7 +340,8 @@ def main():
     # Log final results
     logger.log_final(best_epoch, best_val_acc, training_time)
 
-    checkpoint = torch.load(save_dir / 'best_model.pth')
+    os.makedirs(save_dir / args.model, exist_ok=True)
+    checkpoint = torch.load(save_dir / args.model / 'best_model.pth')
     if isinstance(model, nn.DataParallel):
         model.module.load_state_dict(checkpoint['model_state_dict'])
     else:
