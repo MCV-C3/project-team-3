@@ -1,0 +1,22 @@
+program: Week3/main_layers_gridsearch.py
+
+method: bayes
+
+metric:
+  name: val/accuracy
+  goal: maximize
+
+parameters:
+
+  # 🔥 Remove parts of Inception
+  remove_blocks:
+    values:
+      - []
+
+  # ➕ Add new convolutional blocks
+  extra_conv_blocks:
+    values: [0, 1, 2]
+
+  # 🧠 Classifier complexity
+  classifier_depth:
+    values: [1]

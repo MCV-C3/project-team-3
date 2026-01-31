@@ -7,15 +7,23 @@ import numpy as np
 import glob
 import tqdm
 import os
+import random
 
 from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC, LinearSVC
 from sklearn.metrics import accuracy_score
-
-
+from sklearn.model_selection import KFold   
 
 
 def extract_bovw_histograms(bovw: Type[BOVW], descriptors: Literal["N", "T", "d"]):
-    return np.array([bovw._compute_codebook_descriptor(descriptors=descriptor, kmeans=bovw.codebook_algo) for descriptor in descriptors])
+    return np.array([bovw._compute_codebook_descriptor(descriptors=descriptor, model=bovw.codebook_algo) for descriptor in descriptors])
+
+
+def histogram_intersection_kernel(X, Y):
+    """
+    K(x, y) = sum(min(x_i, y_i))
+    """
+    return np.sum(np.minimum(X[:, None, :], Y[None, :, :]), axis=2)
 
 
 def test(dataset: List[Tuple[Type[Image.Image], int]]
@@ -40,11 +48,15 @@ def test(dataset: List[Tuple[Type[Image.Image], int]]
     print("predicting the values")
     y_pred = classifier.predict(bovw_histograms)
     
-    print("Accuracy on Phase[Test]:", accuracy_score(y_true=descriptors_labels, y_pred=y_pred))
+    acc = accuracy_score(y_true=descriptors_labels, y_pred=y_pred)
+    print("Accuracy on Phase[Test]:", acc)
+
+    return acc   
     
 
 def train(dataset: List[Tuple[Type[Image.Image], int]],
-           bovw:Type[BOVW]):
+           bovw:Type[BOVW],
+           classifier_type: str = "logistic"):
     all_descriptors = []
     all_labels = []
     
@@ -64,7 +76,19 @@ def train(dataset: List[Tuple[Type[Image.Image], int]],
     bovw_histograms = extract_bovw_histograms(descriptors=all_descriptors, bovw=bovw) 
     
     print("Fitting the classifier")
-    classifier = LogisticRegression(class_weight="balanced").fit(bovw_histograms, all_labels)
+    if classifier_type == "logistic":
+        classifier = LogisticRegression(class_weight="balanced", max_iter=2000)
+    elif classifier_type == "linear_svc":
+        classifier = LinearSVC(class_weight="balanced")
+    elif classifier_type == "rbf_svc":
+        classifier = SVC(kernel="rbf", class_weight="balanced")
+    elif classifier_type == "histogram_svc":
+        classifier = SVC(kernel=histogram_intersection_kernel, class_weight="balanced")
+    else:
+        raise ValueError(f"Unknown classifier_type: {classifier_type}")
+
+
+    classifier = classifier.fit(bovw_histograms, all_labels)
 
     print("Accuracy on Phase[Train]:", accuracy_score(y_true=all_labels, y_pred=classifier.predict(bovw_histograms)))
     
@@ -101,20 +125,75 @@ def Dataset(ImageFolder:str = "data/MIT_split/train") -> List[Tuple[Type[Image.I
 
             dataset.append((img_pil, map_classes[cls_folder]))
 
+    return dataset
+
+
+
+
+def DatasetReduced(
+    ImageFolder: str = "data/MIT_split/train",
+    percentage: float = 1.0,
+    seed: int = 20
+) -> List[Tuple[Image.Image, int]]:
+
+    random.seed(seed)
+
+    # Get class folders
+    class_folders = [d for d in os.listdir(ImageFolder)
+                     if os.path.isdir(os.path.join(ImageFolder, d))]
+
+    # Assign integer labels
+    map_classes = {cls_name: idx for idx, cls_name in enumerate(class_folders)}
+
+    dataset: List[Tuple[Image.Image, int]] = []
+
+    for cls_name in class_folders:
+
+        cls_path = os.path.join(ImageFolder, cls_name)
+        images = glob.glob(cls_path + "/*.jpg")
+
+        # Select percentage of images for this class
+        n_total = len(images)
+        n_keep = max(1, int(n_total * percentage))   # keep at least 1
+        selected_images = random.sample(images, n_keep)
+
+        # Load selected images
+        for img_path in selected_images:
+            img_pil = Image.open(img_path).convert("RGB")
+            dataset.append((img_pil, map_classes[cls_name]))
 
     return dataset
 
 
-    
-
-
 if __name__ == "__main__":
-     #/home/cboned/data/Master/MIT_split
-    data_train = Dataset(ImageFolder="/home/cboned/data/Master/MIT_split/train")
-    data_test = Dataset(ImageFolder="/home/cboned/data/Master/MIT_split/test") 
+    data_train = Dataset(ImageFolder="places_reduced/train")
+    data_val   = Dataset(ImageFolder="places_reduced/val")
+    data = data_train + data_val
 
-    bovw = BOVW()
-    
-    bovw, classifier = train(dataset=data_train, bovw=bovw)
-    
-    test(dataset=data_test, bovw=bovw, classifier=classifier)
+    kfold = KFold(n_splits=3, shuffle=True, random_state=42)
+
+    step_size = [4, 8, 16, 32, 64]
+    scale_factors = [1/4, 1/2, 1, 2, 4] #1/2, 1, 2 time the step
+
+    accuracies = []
+
+    for fold, (train_idx, test_idx) in enumerate(kfold.split(data), start=1):
+        print(f"\n========== Fold {fold} ==========")
+        train_data = [data[i] for i in train_idx]
+        test_data  = [data[i] for i in test_idx]
+
+        bovw = BOVW(
+            detector_type="DENSE_SIFT",
+            detector_kwargs={'step_size': ..., 'kp_size': ...} #kp_size == scale
+        )
+
+        bovw, classifier = train(dataset=train_data, bovw=bovw)
+
+        acc = test(dataset=test_data, bovw=bovw, classifier=classifier)
+        accuracies.append(acc)
+
+    print("\n========== 3-Fold Cross-Validation ==========")
+    print("Accuracies per fold:", accuracies)
+    print("Average accuracy:", np.mean(accuracies))
+
+

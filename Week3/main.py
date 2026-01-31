@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-from models import SimpleModel, WraperModel
+from Week3.utils import SimpleModel, WraperModel
 import torchvision.transforms.v2  as F
 from torchviz import make_dot
 import tqdm

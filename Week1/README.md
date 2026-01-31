@@ -27,15 +27,14 @@ pip install numpy opencv-python scikit-learn pillow matplotlib tqdm
 ### Dataset Preparation
 The dataset should follow this structure:
 ```
-data/
-  ├── MIT_split/
-  │   ├── train/
-  │   │   ├── <class_label>/
-  │   │   │   ├── img1.jpg
-  │   │   │   ├── img2.jpg
-  │   ├── test/
-  │       ├── <class_label>/
-  │       │   ├── img1.jpg
+places_reduced/
+  ├── train/
+  │   ├── <class_label>/
+  │   │   ├── img1.jpg
+  │   │   ├── img2.jpg
+  ├── test/
+      ├── <class_label>/
+          ├── img1.jpg
 ```
 Replace `<class_label>` with appropriate labels.
 

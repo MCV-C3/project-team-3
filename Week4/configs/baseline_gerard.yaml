@@ -1,0 +1,33 @@
+program: train2.py
+
+method: grid
+
+metric:
+  name: best/val_accuracy
+  goal: maximize
+
+parameters:
+  model:
+    values:
+      - baseline
+      - baseline_dw
+      - baseline_shuffle
+      - baseline_fire
+      - baseline_shuffle_fire
+      - baseline_fire_dw
+      - baseline_fire_shuffle_dw
+  depth:
+    values: [2, 3, 4, 5, 7, 9]
+
+
+
+command:
+  - env
+  - CUDA_DEVICE_ORDER=PCI_BUS_ID
+  - CUDA_VISIBLE_DEVICES=5
+  - python
+  - ${program}
+  - --model
+  - --data-dir
+  - /data2/users/gasbert/master/C3/2425/MIT_small_train_1
+  - --skip_connections

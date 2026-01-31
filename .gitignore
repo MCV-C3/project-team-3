@@ -1,0 +1,10 @@
+# Avoid uploading datasets
+places_reduced
+places_reduced_reduced
+wandb
+checkpoints
+logs
+
+# Ignore cache files
+__pycache__
+.conda/

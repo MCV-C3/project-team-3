@@ -20,15 +20,12 @@ import pdb
 
 
 class SimpleModel(nn.Module):
-
     def __init__(self, input_d: int, hidden_d: int, output_d: int):
-
-        super(SimpleModel, self).__init__()
+        super().__init__()
 
         self.input_d = input_d
         self.hidden_d = hidden_d
         self.output_d = output_d
-
 
         self.layer1 = nn.Linear(input_d, hidden_d)
         self.layer2 = nn.Linear(hidden_d, hidden_d)
@@ -49,26 +46,100 @@ class SimpleModel(nn.Module):
         return x
     
 
-
 class WraperModel(nn.Module):
-    def __init__(self, num_classes: int, feature_extraction: bool=True):
-        super(WraperModel, self).__init__()
+    def __init__(
+        self,
+        num_classes: int,
+        pretrained: bool = True,
+        remove_blocks: list[str] = None,
+        extra_conv_blocks: int = 0,
+        classifier_depth: int = 1,
+        hidden_dim: int = 512,
+    ):
+        super().__init__()
 
-        # Load pretrained VGG16 model
-        self.backbone = models.vgg16(weights='IMAGENET1K_V1')
-        
-        if feature_extraction:
-            self.set_parameter_requires_grad(feature_extracting=feature_extraction)
+        remove_blocks = remove_blocks or []
 
-        # Modify the classifier for the number of classes
-        self.backbone.classifier[-1] = nn.Linear(self.backbone.classifier[-1].in_features, num_classes)
+        self.backbone = models.inception_v3(
+            weights=None if not pretrained else "IMAGENET1K_V1",
+            aux_logits=True
+        )
+
+        if pretrained:
+            self.set_parameter_requires_grad(feature_extracting=pretrained)
+
+        # Disable auxiliary classifier safely
+        self.backbone.AuxLogits = None
+
+        # ---- Disable unwanted blocks ----
+        for block_name in remove_blocks:
+            if hasattr(self.backbone, block_name):
+                setattr(self.backbone, block_name, nn.Identity())
+
+        # ---- Backbone output size ----
+        backbone_out = 2048
+
+        # ---- Optional extra conv blocks ----
+        convs = []
+        for _ in range(extra_conv_blocks):
+            convs.append(nn.Conv2d(backbone_out, backbone_out, 3, padding=1))
+            convs.append(nn.BatchNorm2d(backbone_out))
+            convs.append(nn.ReLU(inplace=True))
+
+        self.extra_conv = nn.Sequential(*convs) if convs else nn.Identity()
+
+        # ---- Adaptive pooling ----
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # ---- Classifier ----
+        clf = []
+        in_dim = backbone_out
+
+        for _ in range(classifier_depth - 1):
+            clf.append(nn.Linear(in_dim, hidden_dim))
+            clf.append(nn.ReLU(inplace=True))
+            clf.append(nn.Dropout(0.5))
+            in_dim = hidden_dim
+
+        clf.append(nn.Linear(in_dim, num_classes))
+        self.classifier = nn.Sequential(*clf)
 
     def forward(self, x):
-        return self.backbone(x)
+        x = self.backbone.Conv2d_1a_3x3(x)
+        x = self.backbone.Conv2d_2a_3x3(x)
+        x = self.backbone.Conv2d_2b_3x3(x)
+        x = self.backbone.maxpool1(x)
+
+        x = self.backbone.Conv2d_3b_1x1(x)
+        x = self.backbone.Conv2d_4a_3x3(x)
+        x = self.backbone.maxpool2(x)
+
+        x = self.backbone.Mixed_5b(x)
+        x = self.backbone.Mixed_5c(x)
+        x = self.backbone.Mixed_5d(x)
+
+        x = self.backbone.Mixed_6a(x)
+        x = self.backbone.Mixed_6b(x)
+        x = self.backbone.Mixed_6c(x)
+        x = self.backbone.Mixed_6d(x)
+        x = self.backbone.Mixed_6e(x)
+
+        if not isinstance(self.backbone.Mixed_7a, nn.Identity):
+            x = self.backbone.Mixed_7a(x)
+        if not isinstance(self.backbone.Mixed_7b, nn.Identity):
+            x = self.backbone.Mixed_7b(x)
+        if not isinstance(self.backbone.Mixed_7c, nn.Identity):
+            x = self.backbone.Mixed_7c(x)
+
+        x = self.extra_conv(x)
+        x = self.pool(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+
+        return x
     
 
     def extract_feature_maps(self, input_image:torch.Tensor):
-
         conv_weights =[]
         conv_layers = []
         total_conv_layers = 0
@@ -78,7 +149,6 @@ class WraperModel(nn.Module):
                 total_conv_layers += 1
                 conv_weights.append(module.weight)
                 conv_layers.append(module)
-
 
         print("TOTAL CONV LAYERS: ", total_conv_layers)
         feature_maps = []  # List to store feature maps
@@ -90,9 +160,6 @@ class WraperModel(nn.Module):
             layer_names.append(str(layer))
 
         return feature_maps, layer_names
-
-
-
         
 
     def extract_features_from_hooks(self, x, layers: List[str]):
@@ -132,6 +199,7 @@ class WraperModel(nn.Module):
 
         return outputs
 
+
     def modify_layers(self, modify_fn: Callable[[nn.Module], nn.Module]):
         """
         Modify layers of the model using a provided function.
@@ -150,18 +218,31 @@ class WraperModel(nn.Module):
                 param.requires_grad = False
 
 
-
     def extract_grad_cam(self, input_image: torch.Tensor, 
                          target_layer: List[Type[nn.Module]], 
                          targets: List[Type[ClassifierOutputTarget]]) -> Type[GradCAMPlusPlus]:
-
-        
-
         with GradCAMPlusPlus(model=self.backbone, target_layers=target_layer) as cam:
 
             grayscale_cam = cam(input_tensor=input_image, targets=targets)[0, :]
 
         return grayscale_cam
+
+    
+    def freeze_all_backbone(self):
+        for p in self.backbone.parameters():
+            p.requires_grad = False
+
+
+    def unfreeze_blocks(self, block_names: List[str]):
+        """
+        Unfreeze specific Inception blocks by name
+        Example block_names: ["Mixed_7c", "Mixed_7b"]
+        """
+        for name, module in self.backbone.named_children():
+            if name in block_names:
+                for p in module.parameters():
+                    p.requires_grad = True
+
 
 
 

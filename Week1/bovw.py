@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.mixture import GaussianMixture
 import matplotlib.pyplot as plt
 import os
 import glob
@@ -10,50 +11,144 @@ from typing import *
 
 class BOVW():
     
-    def __init__(self, detector_type="AKAZE", codebook_size:int=50, detector_kwargs:dict={}, codebook_kwargs:dict={}):
+    def __init__(self, detector_type="AKAZE", codebook_type="kmeans", codebook_size:int=50, detector_kwargs:dict={}, codebook_kwargs:dict={}):
 
+        self.kp = None
         if detector_type == 'SIFT':
             self.detector = cv2.SIFT_create(**detector_kwargs)
         elif detector_type == 'AKAZE':
             self.detector = cv2.AKAZE_create(**detector_kwargs)
         elif detector_type == 'ORB':
             self.detector = cv2.ORB_create(**detector_kwargs)
+        elif detector_type == 'DENSE_SIFT':
+            step_size = detector_kwargs.get('step_size', 8)
+            kp_size   = detector_kwargs.get('kp_size', step_size)  # nuevo
+
+            detector_kwargs.pop('step_size', None)
+            detector_kwargs.pop('kp_size', None)
+
+            self.detector = cv2.SIFT_create(**detector_kwargs)
+            self.kp = (lambda image: [
+                cv2.KeyPoint(x, y, kp_size)
+                for y in range(0, image.shape[0], step_size) 
+                for x in range(0, image.shape[1], step_size)
+            ])
         else:
-            raise ValueError("Detector type must be 'SIFT', 'SURF', or 'ORB'")
+            raise ValueError("Detector type must be 'SIFT', 'AKAZE', 'DENSE_SIFT', or 'ORB'")
         
         self.codebook_size = codebook_size
-        self.codebook_algo = MiniBatchKMeans(n_clusters=self.codebook_size, **codebook_kwargs)
+        self.codebook_type = codebook_type
+
+        if self.codebook_type == "kmeans":
+            self.codebook_algo = MiniBatchKMeans(n_clusters=self.codebook_size, **codebook_kwargs)
+        elif self.codebook_type == "gmm":
+            self.codebook_algo = GaussianMixture(
+                n_components=self.codebook_size,
+                covariance_type="diag",
+                reg_covar=1e-3,           # ⬅️ VERY IMPORTANT FIX
+                max_iter=200,
+                init_params="kmeans",     # More stable initialization
+                **codebook_kwargs
+            )
+        else:
+            raise ValueError("Codebook type must be 'kmeans' or 'gmm'")
+        
         
                
     ## Modify this function in order to be able to create a dense sift
     def _extract_features(self, image: Literal["H", "W", "C"]) -> Tuple:
-
+        # Dense SIFT
+        if self.kp is not None:
+            return self.detector.compute(image, self.kp(image))
+        
+        # SIFT
         return self.detector.detectAndCompute(image, None)
     
     
-    def _update_fit_codebook(self, descriptors: Literal["N", "T", "d"])-> Tuple[Type[MiniBatchKMeans],
+    def _update_fit_codebook(self, descriptors: Literal["N", "T", "d"], batch_size = 5000)-> Tuple[Type[MiniBatchKMeans],
                                                                                Literal["codebook_size", "d"]]:
         
-        all_descriptors = np.vstack(descriptors)
+        #all_descriptors = np.vstack(descriptors)
 
-        self.codebook_algo = self.codebook_algo.partial_fit(X=all_descriptors)
+        if self.codebook_type == "kmeans":
 
-        return self.codebook_algo, self.codebook_algo.cluster_centers_
+            # Stream descriptors in chunks
+            for desc in descriptors:
+                if desc is None or len(desc) == 0:
+                    continue
+                
+                # Split into mini-batches
+                for i in range(0, len(desc), batch_size):
+                    chunk = desc[i : i + batch_size]
+                    self.codebook_algo.partial_fit(chunk)
+
+            return self.codebook_algo, self.codebook_algo.cluster_centers_
+
+            #self.codebook_algo = self.codebook_algo.partial_fit(X=all_descriptors)
+            #return self.codebook_algo, self.codebook_algo.cluster_centers_
+
+        elif self.codebook_type == "gmm":
+            # GMM still needs full data… unless you use a subset
+            # So we sample randomly to stay memory-safe
+            sampled = []
+            for desc in descriptors:
+                if desc is None: 
+                    continue
+
+                # Take at most 500 descriptors per image
+                if len(desc) > 500:
+                    idx = np.random.choice(len(desc), 500, replace=False)
+                    sampled.append(desc[idx])
+                else:
+                    sampled.append(desc)
+
+            sampled = np.vstack(sampled)
+            sampled = np.vstack(sampled).astype(np.float64)
+            self.codebook_algo.fit(sampled)
+            return self.codebook_algo, self.codebook_algo.means_
+        
     
-    def _compute_codebook_descriptor(self, descriptors: Literal["1 T d"], kmeans: Type[KMeans]) -> np.ndarray:
+    def _compute_codebook_descriptor(self, descriptors: Literal["1 T d"], model) -> np.ndarray:
 
+        if self.codebook_type == "kmeans":
+            return self._compute_kmeans_histogram(descriptors, model)
+
+        elif self.codebook_type == "gmm":
+            return self._compute_fisher_vector(descriptors, model)  
+
+
+    def _compute_kmeans_histogram(self, descriptors, kmeans):
         visual_words = kmeans.predict(descriptors)
-        
-        
+                
         # Create a histogram of visual words
-        codebook_descriptor = np.zeros(kmeans.n_clusters)
+        histogram = np.zeros(kmeans.n_clusters)
         for label in visual_words:
-            codebook_descriptor[label] += 1
+            histogram[label] += 1
         
         # Normalize the histogram (optional)
-        codebook_descriptor = codebook_descriptor / np.linalg.norm(codebook_descriptor)
+        histogram = histogram / np.linalg.norm(histogram)
         
-        return codebook_descriptor       
+        return histogram
+
+
+    def _compute_fisher_vector(self, descriptors, gmm):
+        # responsibilities NxK
+        Q = gmm.predict_proba(descriptors)
+
+        # mean, variance, weights
+        means = gmm.means_
+        covs  = gmm.covariances_
+
+        # FV components
+        G_mu = (Q[:,:,None] * (descriptors[:,None,:] - means[None,:,:]) / np.sqrt(covs[None,:,:])).sum(axis=0)
+        G_sigma = (Q[:,:,None] * ((descriptors[:,None,:] - means[None,:,:])**2 / covs[None,:,:] - 1)).sum(axis=0)
+
+        fv = np.hstack([G_mu.flatten(), G_sigma.flatten()])
+        
+        # normalize
+        fv = fv / np.linalg.norm(fv)
+
+        return fv   
     
 
 
