@@ -158,7 +158,7 @@ def main():
     # Initialize wandb
     wandb.init(
         project="MCVC-C3-W4",
-        name=f"{args.model}{'_KD' if args.distill else ''}",
+        name=f"{args.model}{'_KD' if args.distill else ''}{'_FT' if args.finetuned_teacher is not None else ''}",
         config={
             "model": f"{args.model}",
             "dataset": PurePath(args.data_dir),
@@ -219,7 +219,7 @@ def main():
         print("Knowledge distillation ENABLED (Teacher: InceptionV3)")
         teacher_model = build_model('teacher_model', num_classes=8, pretrained=True)        
 
-        if args.finetuned_teacher:    
+        if args.finetuned_teacher is not None:    
             print("Loading finetuned teacher model weights...")
             checkpoint = torch.load(args.finetuned_teacher, map_location="cpu", weights_only=False)
             teacher_model.load_state_dict(checkpoint["model_state_dict"], strict=True)        
@@ -308,7 +308,7 @@ def main():
             efficiency_ratio = val_acc / params_100k
             distance_d = np.sqrt(
                 (params_100k ** 2) +
-                ((val_acc * 100 if val_acc <= 1 else val_acc) - 100) ** 2
+                ((val_acc - 1) ** 2)
             )
             
             os.makedirs(save_dir / args.model, exist_ok=True)
