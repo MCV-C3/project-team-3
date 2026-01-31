@@ -7,17 +7,27 @@ metric:
   goal: maximize
 
 parameters:
+  model:
+    values:
+      - baseline
+      - baseline_dw
+      - baseline_shuffle
+      - baseline_fire
+      - baseline_shuffle_fire
+      - baseline_fire_dw
+      - baseline_fire_shuffle_dw
   depth:
-    values: [3, 4, 5]
+    values: [2, 3, 4, 5, 7, 9]
+
+
 
 command:
   - env
   - CUDA_DEVICE_ORDER=PCI_BUS_ID
-  - CUDA_VISIBLE_DEVICES=6
+  - CUDA_VISIBLE_DEVICES=5
   - python
   - ${program}
   - --model
-  - baseline
   - --data-dir
   - /data2/users/gasbert/master/C3/2425/MIT_small_train_1
-  - --distill
+  - --skip_connections

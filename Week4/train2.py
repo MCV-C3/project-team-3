@@ -52,6 +52,7 @@ def parse_arguments():
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--epochs', type=int, default=100, help='Max number of epochs')
     parser.add_argument('--estopping', type=int, default=5, help='Early stopping patience')
+    parser.add_argument('--skip_connections', action='store_true', help='Enable skip connections in model')
     
     # Distillation
     parser.add_argument('--distill', action='store_true', help='Enable knowledge distillation using InceptionV3 teacher')
@@ -173,6 +174,7 @@ def main():
             "kd_temperature": args.kd_temperature if args.distill else None,
             "teacher_model": "InceptionV3" if args.distill else None,
             "finetuned_teacher": args.finetuned_teacher if args.distill else None,
+            "skip_connections": args.skip_connections,
         }
     )
     
@@ -201,7 +203,8 @@ def main():
     model_params = {
         'dropout': args.dropout,
         'depth': wandb.config.depth,
-        'num_classes': len(train_loader.dataset.classes)
+        'num_classes': len(train_loader.dataset.classes),
+        'use_skip': args.skip_connections
     }
     model = build_model(args.model, **model_params)
 

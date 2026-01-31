@@ -50,195 +50,134 @@ class DummyTest(BaseModel):
         pass
 
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int, dropout: int):
+class ResidualAdd(nn.Module):
+    def __init__(self, in_ch, out_ch):
         super().__init__()
-        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1, bias=False)
+        self.proj = None
+        if in_ch != out_ch:
+            self.proj = nn.Conv2d(in_ch, out_ch, kernel_size=1, bias=False)
 
+    def forward(self, x, out):
+        if self.proj is not None:
+            x = self.proj(x)
+        return x + out
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_ch, out_ch, dropout, use_skip=False):
+        super().__init__()
+        self.use_skip = use_skip
+
+        self.conv = nn.Conv2d(in_ch, out_ch, 3, padding=1, bias=False)
         self.norm = nn.BatchNorm2d(out_ch)
         self.act = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout(dropout)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = x.shape
-        x = self.conv(x)
-        x = self.norm(x)
-        x = self.act(x)
-        x = self.pool(x)
-        return x
+        self.residual = ResidualAdd(in_ch, out_ch) if use_skip else None
+        self.pool = nn.MaxPool2d(2)
+
+    def forward(self, x):
+        identity = x
+        out = self.act(self.norm(self.conv(x)))
+
+        if self.use_skip:
+            out = self.residual(identity, out)
+
+        return self.pool(out)
 
 
 class DepthwiseConvBlock(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int, dropout: float):
+    def __init__(self, in_ch, out_ch, dropout, use_skip=False):
         super().__init__()
+        self.use_skip = use_skip
 
-        # 1) Depth-wise 3x3 convolution
-        self.depthwise = nn.Conv2d(
-            in_ch,
-            in_ch,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            groups=in_ch,
-            bias=False
-        )
-
-        # 2) Point-wise 1x1 convolution
-        self.pointwise = nn.Conv2d(
-            in_ch,
-            out_ch,
-            kernel_size=1,
-            stride=1,
-            padding=0,
-            bias=False
-        )
-
+        self.depthwise = nn.Conv2d(in_ch, in_ch, 3, padding=1, groups=in_ch, bias=False)
+        self.pointwise = nn.Conv2d(in_ch, out_ch, 1, bias=False)
         self.norm = nn.BatchNorm2d(out_ch)
         self.act = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout(dropout)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.depthwise(x)
-        x = self.pointwise(x)
-        x = self.norm(x)
-        x = self.act(x)
-        x = self.pool(x)
-        return x
+        self.residual = ResidualAdd(in_ch, out_ch) if use_skip else None
+        self.pool = nn.MaxPool2d(2)
+
+    def forward(self, x):
+        identity = x
+        out = self.act(self.norm(self.pointwise(self.depthwise(x))))
+
+        if self.use_skip:
+            out = self.residual(identity, out)
+
+        return self.pool(out)
+
 
 
 class FireBlock(nn.Module):
-    def __init__(
-        self,
-        in_ch: int,
-        squeeze_ch: int,
-        expand_ch: int,
-        dropout: float
-    ):
+    def __init__(self, in_ch, squeeze_ch, expand_ch, dropout, use_skip=False):
         super().__init__()
+        self.use_skip = use_skip
+        out_ch = 2 * expand_ch
 
-        # Squeeze layer (1x1)
-        self.squeeze = nn.Conv2d(
-            in_ch,
-            squeeze_ch,
-            kernel_size=1,
-            bias=False
-        )
-        self.squeeze_act = nn.ReLU(inplace=True)
+        self.squeeze = nn.Conv2d(in_ch, squeeze_ch, 1, bias=False)
+        self.expand1 = nn.Conv2d(squeeze_ch, expand_ch, 1, bias=False)
+        self.expand3 = nn.Conv2d(squeeze_ch, expand_ch, 3, padding=1, bias=False)
 
-        # Expand layers
-        self.expand_1x1 = nn.Conv2d(
-            squeeze_ch,
-            expand_ch,
-            kernel_size=1,
-            bias=False
-        )
+        self.act = nn.ReLU(inplace=True)
+        self.norm = nn.BatchNorm2d(out_ch)
 
-        self.expand_3x3 = nn.Conv2d(
-            squeeze_ch,
-            expand_ch,
-            kernel_size=3,
-            padding=1,
-            bias=False
-        )
+        self.residual = ResidualAdd(in_ch, out_ch) if use_skip else None
+        self.pool = nn.MaxPool2d(2)
 
-        self.expand_act = nn.ReLU(inplace=True)
+    def forward(self, x):
+        identity = x
+        x = self.act(self.squeeze(x))
 
-        self.norm = nn.BatchNorm2d(2 * expand_ch)
-        self.dropout = nn.Dropout(dropout)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        out = torch.cat([self.expand1(x), self.expand3(x)], dim=1)
+        out = self.act(self.norm(out))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.squeeze(x)
-        x = self.squeeze_act(x)
+        if self.use_skip:
+            out = self.residual(identity, out)
 
-        x1 = self.expand_1x1(x)
-        x3 = self.expand_3x3(x)
+        return self.pool(out)
 
-        x = torch.cat([x1, x3], dim=1)  # channel concat
-        x = self.expand_act(x)
-        x = self.norm(x)
-        x = self.pool(x)
-
-        return x
     
 
 class ShuffleBlock(nn.Module):
-    def __init__(
-        self,
-        in_ch: int,
-        out_ch: int,
-        groups: int,
-        dropout: float
-    ):
+    def __init__(self, in_ch, out_ch, groups, dropout, use_skip=False):
         super().__init__()
+        self.use_skip = use_skip
+        mid_ch = out_ch // 4
 
-        assert in_ch % groups == 0
-        assert out_ch % groups == 0
+        self.conv1 = nn.Conv2d(in_ch, mid_ch, 1, groups=groups, bias=False)
+        self.dwconv = nn.Conv2d(mid_ch, mid_ch, 3, padding=1, groups=mid_ch, bias=False)
+        self.conv3 = nn.Conv2d(mid_ch, out_ch, 1, groups=groups, bias=False)
 
-        mid_ch = out_ch // 4  # bottleneck (standard ShuffleNet choice)
-
-        # 1x1 grouped conv (reduce)
-        self.conv1 = nn.Conv2d(
-            in_ch,
-            mid_ch,
-            kernel_size=1,
-            groups=groups,
-            bias=False
-        )
         self.bn1 = nn.BatchNorm2d(mid_ch)
-
-        # 3x3 depth-wise conv
-        self.dwconv = nn.Conv2d(
-            mid_ch,
-            mid_ch,
-            kernel_size=3,
-            padding=1,
-            groups=mid_ch,
-            bias=False
-        )
         self.bn2 = nn.BatchNorm2d(mid_ch)
-
-        # 1x1 grouped conv (expand)
-        self.conv3 = nn.Conv2d(
-            mid_ch,
-            out_ch,
-            kernel_size=1,
-            groups=groups,
-            bias=False
-        )
         self.bn3 = nn.BatchNorm2d(out_ch)
 
         self.act = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout(dropout)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-
+        self.residual = ResidualAdd(in_ch, out_ch) if use_skip else None
+        self.pool = nn.MaxPool2d(2)
         self.groups = groups
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.act(x)
+    def forward(self, x):
+        identity = x
 
-        x = channel_shuffle(x, self.groups)
+        out = self.act(self.bn1(self.conv1(x)))
+        out = channel_shuffle(out, self.groups)
+        out = self.bn2(self.dwconv(out))
+        out = self.act(self.bn3(self.conv3(out)))
 
-        x = self.dwconv(x)
-        x = self.bn2(x)
+        if self.use_skip:
+            out = self.residual(identity, out)
 
-        x = self.conv3(x)
-        x = self.bn3(x)
-        x = self.act(x)
+        return self.pool(out)
 
-        x = self.pool(x)
-        return x
 
 
 
 
 @register_model('baseline_dw')
 class BaselineDepthwise(BaseModel):
-    def __init__(self, num_classes: int = 8, depth: int = 5, dropout: float = 0.2):
+    def __init__(self, num_classes: int = 8, depth: int = 5, dropout: float = 0.2, use_skip: bool = False):
         super().__init__()
 
         block_list = []
@@ -252,7 +191,8 @@ class BaselineDepthwise(BaseModel):
                 DepthwiseConvBlock(
                     input_channels,
                     output_channels,
-                    dropout
+                    dropout, 
+                    use_skip=use_skip
                 )
             )
 
@@ -279,6 +219,7 @@ class BaselineFire(BaseModel):
         depth: int = 5,
         dropout: float = 0.2,
         squeeze_ratio: float = 0.25
+        , use_skip: bool = False
     ):
         super().__init__()
 
@@ -299,7 +240,8 @@ class BaselineFire(BaseModel):
                     in_ch=input_channels,
                     squeeze_ch=squeeze_channels,
                     expand_ch=expand_channels,
-                    dropout=dropout
+                    dropout=dropout,
+                    use_skip=use_skip
                 )
             )
 
@@ -326,6 +268,7 @@ class BaselineShuffle(BaseModel):
         depth: int = 5,
         dropout: float = 0.2,
         groups: int = 4
+        , use_skip: bool = False
     ):
         super().__init__()
 
@@ -346,7 +289,8 @@ class BaselineShuffle(BaseModel):
                     in_ch=input_channels,
                     out_ch=output_channels,
                     groups=g,
-                    dropout=dropout
+                    dropout=dropout,
+                    use_skip=use_skip
                 )
             )
 
@@ -367,7 +311,7 @@ class BaselineShuffle(BaseModel):
 
 @register_model('baseline_fire_dw')
 class BaselineFireDepthwise(BaseModel):
-    def __init__(self, num_classes: int = 8, depth: int = 6, dropout: float = 0.2, squeeze_ratio: float = 0.25):
+    def __init__(self, num_classes: int = 8, depth: int = 6, dropout: float = 0.2, squeeze_ratio: float = 0.25, use_skip: bool = False):
         super().__init__()
 
         block_list = []
@@ -386,7 +330,8 @@ class BaselineFireDepthwise(BaseModel):
                         in_ch=input_channels,
                         squeeze_ch=squeeze_channels,
                         expand_ch=expand_channels,
-                        dropout=dropout
+                        dropout=dropout,
+                        use_skip=use_skip
                     )
                 )
             else:
@@ -394,7 +339,8 @@ class BaselineFireDepthwise(BaseModel):
                     DepthwiseConvBlock(
                         in_ch=input_channels,
                         out_ch=output_channels,
-                        dropout=dropout
+                        dropout=dropout,
+                        use_skip=use_skip
                     )
                 )
 
@@ -413,7 +359,7 @@ class BaselineFireDepthwise(BaseModel):
 
 @register_model('baseline_shuffle_fire')
 class BaselineShuffleFire(BaseModel):
-    def __init__(self, num_classes: int = 8, depth: int = 6, dropout: float = 0.2, groups: int = 4, squeeze_ratio: float = 0.25):
+    def __init__(self, num_classes: int = 8, depth: int = 6, dropout: float = 0.2, groups: int = 4, squeeze_ratio: float = 0.25, use_skip: bool = False):
         super().__init__()
 
         block_list = []
@@ -433,7 +379,8 @@ class BaselineShuffleFire(BaseModel):
                         in_ch=input_channels,
                         out_ch=output_channels,
                         groups=g,
-                        dropout=dropout
+                        dropout=dropout,
+                        use_skip=use_skip
                     )
                 )
             else:
@@ -444,7 +391,8 @@ class BaselineShuffleFire(BaseModel):
                         in_ch=input_channels,
                         squeeze_ch=squeeze_channels,
                         expand_ch=expand_channels,
-                        dropout=dropout
+                        dropout=dropout,
+                        use_skip=use_skip
                     )
                 )
 
@@ -462,7 +410,7 @@ class BaselineShuffleFire(BaseModel):
 
 @register_model('baseline_fire_shuffle_dw')
 class BaselineFireShuffleDepthwise(BaseModel):
-    def __init__(self, num_classes: int = 8, depth: int = 6, dropout: float = 0.2, groups: int = 4, squeeze_ratio: float = 0.25):
+    def __init__(self, num_classes: int = 8, depth: int = 6, dropout: float = 0.2, groups: int = 4, squeeze_ratio: float = 0.25, use_skip: bool = False):
         super().__init__()
         block_list = []
         output_channels = 3
@@ -475,17 +423,16 @@ class BaselineFireShuffleDepthwise(BaseModel):
                 # Fire first
                 squeeze_channels = max(1, int(output_channels * squeeze_ratio))
                 expand_channels = output_channels // 2
-                block_list.append(FireBlock(input_channels, squeeze_channels, expand_channels, dropout))
+                block_list.append(FireBlock(input_channels, squeeze_channels, expand_channels, dropout, use_skip=use_skip))
             elif i < depth - 1:
                 # Shuffle middle
                 g = min(groups, input_channels, output_channels)
                 while input_channels % g != 0 or output_channels % g != 0:
                     g -= 1
-                block_list.append(ShuffleBlock(input_channels, output_channels, groups=g, dropout=dropout))
+                block_list.append(ShuffleBlock(input_channels, output_channels, groups=g, dropout=dropout, use_skip=use_skip))
             else:
                 # Depthwise last
-                block_list.append(DepthwiseConvBlock(input_channels, output_channels, dropout))
-
+                block_list.append(DepthwiseConvBlock(input_channels, output_channels, dropout, use_skip=use_skip))
         self.block_list = nn.ModuleList(block_list)
         self.gap = nn.AdaptiveAvgPool2d((1,1))
         self.classifier = nn.Linear(output_channels, num_classes)
@@ -501,7 +448,7 @@ class BaselineFireShuffleDepthwise(BaseModel):
 
 @register_model('baseline')
 class Baseline(BaseModel):
-    def __init__(self, num_classes: int = 8, depth: int = 5, dropout: float = 0.2):
+    def __init__(self, num_classes: int = 8, depth: int = 5, dropout: float = 0.2, use_skip: bool = False):
         super().__init__()
         block_list = []
         output_channels = 3
@@ -509,7 +456,7 @@ class Baseline(BaseModel):
             input_channels = output_channels
             output_channels = 2 ** ((i//2) + 5)
 
-            block_list.append(ConvBlock(input_channels, output_channels, dropout))
+            block_list.append(ConvBlock(input_channels, output_channels, dropout, use_skip=use_skip))
         self.block_list = nn.ModuleList(block_list)
 
         self.gap = nn.AdaptiveAvgPool2d((1, 1)) # Global Avg Pool -> (B, output_channels, 1, 1)
